@@ -1,2 +1,2 @@
-# stable-truncated-gaussian
-Numerically stable implementation of the Truncated Gaussian distribution in Python.
+# Stable Truncated Gaussian
+A **differentiable** implementation of the **Truncated Gaussian (Normal)** distribution using *Python* and *Pytorch*, which is **numerically stable** even when the *μ* parameter lies outside the interval *\[a,b\]* given by the bounds of the distribution. In this situation, a naive evaluation of the mean, variance and log-probability of the distribution could otherwise result in [catastrophic cancellation](https://en.wikipedia.org/wiki/Catastrophic_cancellation). Our code is inspired by [TruncatedNormal.jl](https://github.com/cossio/TruncatedNormal.jl) and [torch_truncnorm](https://github.com/toshas/torch_truncnorm). Currently, we only provide functionality for calculating the mean, variance and log-probability, but not for calculating the entropy or sampling from the distribution.
