@@ -42,19 +42,20 @@ class TruncatedGaussian(Distribution):
 		@a Lower bound
 		@b Upper bound
 
-		All parameters must be instances of torch.Tensor.
+		All parameters must be instances of torch.Tensor with a single value (i.e., be of dimension 0). 
 	"""
 	def __init__(self, mu, sigma, a, b):
 		# Safety checks
+		if not (isinstance(mu, torch.Tensor) and isinstance(sigma, torch.Tensor) and isinstance(a, torch.Tensor) \
+			and isinstance(b, torch.Tensor)):
+			raise ValueError("All the parameters must be instances of torch.Tensor")	
+		if not (mu.dim() == 0 and sigma.dim() == 0 and a.dim() == 0 and b.dim() == 0):
+			raise ValueError("All the parameters must be tensors containing a single value (i.e., of dimension 0)")	
 		if sigma <= 0:
 			raise ValueError("sigma must be greater than 0")
 		if a >= b:
 			raise ValueError("parameter 'a' (lower bound) must be smaller than 'b' (upper bound)")       
-		
-		if not (isinstance(mu, torch.Tensor) and isinstance(sigma, torch.Tensor) and isinstance(a, torch.Tensor) \
-				and isinstance(b, torch.Tensor)):
-			raise ValueError("All the parameters must be instances of torch.Tensor")
-		
+			
 		self._mu = mu
 		self._sigma = sigma
 		self._a = a
@@ -209,14 +210,16 @@ class TruncatedGaussian(Distribution):
 	def variance(self):
 		return self._variance
 	
-	# Log probability of some value x under the truncated gaussian
+	# Log probability of some value(s) x under the truncated gaussian
+	# Unlike the parameters of the distributions, we allow x to be a tensor of arbitrary size
+	# (e.g., x=torch.tensor([0,1,2]))
 	def log_prob(self, x):
 		# Check that x is a tensor
 		if not isinstance(x, torch.Tensor):
 			raise ValueError("parameter 'x' must be an instance of torch.Tensor") 
 
 		# x must be inside the interval [a, b]
-		if x < self._a or x > self._b:
+		if torch.any(x < self._a) or torch.any(x > self._b):
 			raise ValueError(f"parameter 'x' ({x}) is outside the [a={self._a}, b={self._b}] interval")
 
 		xi = (x-self._mu)/self._sigma
