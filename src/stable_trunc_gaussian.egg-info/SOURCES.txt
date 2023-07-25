@@ -1,0 +1,12 @@
+LICENSE
+MANIFEST.in
+README.md
+pyproject.toml
+src/stable_trunc_gaussian/__init__.py
+src/stable_trunc_gaussian/src.py
+src/stable_trunc_gaussian/tests.py
+src/stable_trunc_gaussian.egg-info/PKG-INFO
+src/stable_trunc_gaussian.egg-info/SOURCES.txt
+src/stable_trunc_gaussian.egg-info/dependency_links.txt
+src/stable_trunc_gaussian.egg-info/requires.txt
+src/stable_trunc_gaussian.egg-info/top_level.txt

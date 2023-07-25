@@ -1,0 +1,30 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="stable-trunc-gaussian"
+version="1.0.0"
+description="A numerically-stable and differentiable implementation of the Truncated Gaussian distribution in Pytorch."
+readme="README.md"
+authors = [{ name = "Carlos Núñez Molina", email = "ccaarlos@ugr.es" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["machine-learning", "statistics", "pytorch", "stability"]
+dependencies = [
+    "torch",
+]
+
+[project.optional-dependencies]
+test = ["scipy"]
+
+[project.urls]
+Homepage = "https://github.com/TheAeryan/stable-truncated-gaussian"
+
+
