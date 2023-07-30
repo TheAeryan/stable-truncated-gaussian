@@ -1,4 +1,4 @@
-[![PyPI version](https://badge.fury.io/py/stable-trunc-gaussian.svg)](https://badge.fury.io/py/stable-trunc-gaussian)
+`[![PyPI version](https://badge.fury.io/py/stable-trunc-gaussian.svg)](https://badge.fury.io/py/stable-trunc-gaussian)
 [![Downloads](https://static.pepy.tech/badge/stable-trunc-gaussian)](https://pepy.tech/project/stable-trunc-gaussian)
 
 # Stable Truncated Gaussian
@@ -30,4 +30,17 @@ Result:
     Mean: tensor(10.0981)
     Variance: tensor(0.0094)
     Log-prob(10.5): tensor(-2.8126)
-    
+
+## Parallel vs Sequential Implementation
+The class obtained by doing `from stable_trunc_gaussian import TruncatedGaussian` corresponds to a **parallel** implementation of the truncated gaussian, which makes possible to obtain several values (mean, variance and log-probs) in parallel. In case you are only interested in computing values sequentially, i.e., one at a time, we also provide a **sequential** implementation which results more efficient *only* for this case. In order to use this sequential implementation, simply do `from stable_trunc_gaussian import SeqTruncatedGaussian`. Here is an example:
+
+    from stable_trunc_gaussian import TruncatedGaussian, SeqTruncatedGaussian
+    from torch import tensor as t
+
+    # Parallel computation
+    means = TruncatedGaussian(t([0,0.5]),t(1,1),t(-1,2),t(1,5)).mean
+
+    # Sequential computation
+    # Note: the 'TruncatedGaussian' class can also be used for this sequential case
+    mean_0 = SeqTruncatedGaussian(t([0]),t(1),t(-1),t(1)).mean
+    mean_1 = SeqTruncatedGaussian(t([0.5]),t(1),t(2),t(5)).mean
