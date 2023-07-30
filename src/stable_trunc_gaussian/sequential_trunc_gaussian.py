@@ -24,7 +24,7 @@ INV_PI = 1/math.pi
 LOG_SQRT_2_PI = math.log(SQRT_2_PI)
 LOG_2 = math.log(2)
 
-class TruncatedGaussian(Distribution):
+class SequentialTruncatedGaussian(Distribution):
 
 	has_rsample = False
 
@@ -132,17 +132,17 @@ class TruncatedGaussian(Distribution):
 	@staticmethod
 	def _F_1(x, y):
 		if torch.abs(x) > torch.abs(y):
-			out = TruncatedGaussian._F_1(y, x)
+			out = SequentialTruncatedGaussian._F_1(y, x)
 		elif torch.abs(x - y) < 1e-7:
-			out = TruncatedGaussian._P_1(x, y-x)
+			out = SequentialTruncatedGaussian._P_1(x, y-x)
 		elif x <= 0 and y <= 0:
-			delt = TruncatedGaussian._delta(x, y)
+			delt = SequentialTruncatedGaussian._delta(x, y)
 			out = (1 - delt) / (delt*erfcx(-y) - erfcx(-x))  
 		elif x >= 0 and y >= 0:
-			delt = TruncatedGaussian._delta(x, y)
+			delt = SequentialTruncatedGaussian._delta(x, y)
 			out = (1 - delt) / (erfcx(x) - delt*erfcx(y))
 		else:
-			delt = TruncatedGaussian._delta(x, y)
+			delt = SequentialTruncatedGaussian._delta(x, y)
 			out = ((1-delt)*torch.exp(-x**2)) / (erf(y)-erf(x))
 
 		return out
@@ -150,17 +150,17 @@ class TruncatedGaussian(Distribution):
 	@staticmethod
 	def _F_2(x, y):
 		if torch.abs(x) > torch.abs(y):
-			out = TruncatedGaussian._F_2(y, x)
+			out = SequentialTruncatedGaussian._F_2(y, x)
 		elif torch.abs(x - y) < 1e-7:
-			out = TruncatedGaussian._P_2(x, y-x)
+			out = SequentialTruncatedGaussian._P_2(x, y-x)
 		elif x <= 0 and y <= 0:
-			delt = TruncatedGaussian._delta(x, y)
+			delt = SequentialTruncatedGaussian._delta(x, y)
 			out = (x - y*delt) / (delt*erfcx(-y) - erfcx(-x))  
 		elif x >= 0 and y >= 0:
-			delt = TruncatedGaussian._delta(x, y)
+			delt = SequentialTruncatedGaussian._delta(x, y)
 			out = (x - y*delt) / (erfcx(x) - delt*erfcx(y))
 		else:
-			delt = TruncatedGaussian._delta(x, y)
+			delt = SequentialTruncatedGaussian._delta(x, y)
 			out = ((x-y*delt)*torch.exp(-x**2)) / (erf(y)-erf(x))
 
 		return out

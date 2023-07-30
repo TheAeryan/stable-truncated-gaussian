@@ -1,7 +1,7 @@
 # Tests for truncated gaussian
 # I compare the values obtained with my code against those returned by scipy.stats.truncnorm
 
-from stable_trunc_gaussian import TruncatedGaussian as TG
+from parallel_trunc_gaussian import ParallelTruncatedGaussian as TG
 from scipy.stats import truncnorm
 from torch import tensor as t
 import math
