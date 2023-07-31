@@ -44,3 +44,7 @@ The class obtained by doing `from stable_trunc_gaussian import TruncatedGaussian
     # Note: the 'TruncatedGaussian' class can also be used for this sequential case
     mean_0 = SeqTruncatedGaussian(t([0]),t(1),t(-1),t(1)).mean
     mean_1 = SeqTruncatedGaussian(t([0.5]),t(1),t(2),t(5)).mean
+
+# Acknowledgements
+
+We want to thank user [KFrank](https://discuss.pytorch.org/u/KFrank) for his help in solving the bug when computing the gradients for the parallel version (bug solved in version 1.1.1).
