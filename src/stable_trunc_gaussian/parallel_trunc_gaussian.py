@@ -12,6 +12,7 @@ Right now, we only implement the following methods: mean, variance and log_prob.
 import torch
 from torch.special import erf, erfc, erfcx
 from torch.distributions import Distribution, constraints
+from torch import where
 import math
 
 # Constants
@@ -21,8 +22,12 @@ SQRT_2_PI = math.sqrt(2*math.pi)
 INV_SQRT_2 = 1/SQRT_2
 INV_SQRT_PI = 1/SQRT_PI
 INV_PI = 1/math.pi
+SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 LOG_SQRT_2_PI = math.log(SQRT_2_PI)
 LOG_2 = math.log(2)
+
+
+EPS = torch.finfo(torch.float32).eps
 
 class ParallelTruncatedGaussian(Distribution):
 
@@ -133,56 +138,142 @@ class ParallelTruncatedGaussian(Distribution):
 		x = torch.where(torch.abs(x_)<=torch.abs(y_),x_,y_)
 		y = torch.where(torch.abs(y_)>=torch.abs(x_),y_,x_)
 
+		# Obtain masks
+		with torch.no_grad():
+			out1_cond = torch.abs(x - y) < 1e-7 # tensor([False, False, False, False])
+			out2_cond = torch.logical_and( torch.logical_and(x<=0, y<=0), torch.logical_not(out1_cond) ) # tensor([False,  True, False, False])
+			out3_cond = torch.logical_and( torch.logical_and(x>=0, y>=0), torch.logical_not(out1_cond) ) # tensor([False, False, False,  True]) 
+			out4_cond = torch.logical_and( torch.logical_and( torch.logical_not(out1_cond), torch.logical_not(out2_cond) ),
+										   torch.logical_not(out3_cond) ) # All the other conditions must be false
+
+
+		# Mask input values for each operation
+		x1, y1 = where(out1_cond, x, 0), where(out1_cond, y, 0)
+		x2, y2 = where(out2_cond, x, -1), where(out2_cond, y, 0)
+		x3, y3 = where(out3_cond, x, 0), where(out3_cond, y, 1)
+		x4, y4 = where(out4_cond, x, 0), where(out4_cond, y, 1)
+
+		# Apply operations
+		delt = ParallelTruncatedGaussian._delta(x, y)
+		one_minus_delt = 1 - delt
+
+		out1_m = ParallelTruncatedGaussian._P_1(x1, y1-x1)
+		out2_m = one_minus_delt / (delt*erfcx(-y2) - erfcx(-x2))
+		out3_m = one_minus_delt / (erfcx(x3) - delt*erfcx(y3))
+		out4_m = (one_minus_delt*torch.exp(-x4**2)) / (erf(y4)-erf(x4))
+
+		# Unmask tensors, by setting masked values to 0
+		out1 = where(out1_cond, out1_m, 0)
+		out2 = where(out2_cond, out2_m, 0)
+		out3 = where(out3_cond, out3_m, 0)
+		out4 = where(out4_cond, out4_m, 0)
+
+		# Add them up into a single tensor
+		final_out = out1 + out2 + out3 + out4
+
+		"""
+		print("\n--- Inputs")
+		print("> ", x, y)
+
+		print("\n--- Masks")
+		print("> ", out1_cond)
+		print("> ", out2_cond)
+		print("> ", out3_cond)
+		print("> ", out4_cond)
+
+		print("\n--- Masked inputs")
+		print("> ", x1, y1)
+		print("> ", x2, y2)
+		print("> ", x3, y3)
+		print("> ", x4, y4)
+
+		print("\n--- Masked outputs")
+		print("> ", out1_m)
+		print("> ", out2_m)
+		print("> ", out3_m)
+		print("> ", out4_m)
+
+		print("\n--- Unmasked outputs")
+		print("> ", out1)
+		print("> ", out2)
+		print("> ", out3)
+		print("> ", out4)
+
+		print("\n--- Final result")
+		print("> ", final_out)
+		"""
+
+		return final_out
+
+
+		"""
+		OLD
+
 		# Values
 		delt = ParallelTruncatedGaussian._delta(x, y)
 		one_minus_delt = 1 - delt
 		out1 = ParallelTruncatedGaussian._P_1(x, y-x)
-		out2 = one_minus_delt / (delt*erfcx(-y) - erfcx(-x))
-		out3 = one_minus_delt / (erfcx(x) - delt*erfcx(y))
-		out4 = (one_minus_delt*torch.exp(-x**2)) / (erf(y)-erf(x))
+		out2 = one_minus_delt / (delt*erfcx(-y) - erfcx(-x) + EPS)
+		out3 = one_minus_delt / (erfcx(x) - delt*erfcx(y) + EPS)
+		out4 = (one_minus_delt*torch.exp(-x**2)) / (erf(y)-erf(x) + EPS)
 
 		# Conditions
-		out1_cond = torch.abs(x - y) < 1e-7
-		out2_cond = torch.logical_and( torch.logical_and(x<=0, y<=0), torch.logical_not(out1_cond) )
-		out3_cond = torch.logical_and( torch.logical_and(x>=0, y>=0), torch.logical_not(out1_cond) )
+		x_cond, y_cond = x.detach(), y.detach() # Make sure that gradients do not go through the conditions
+		out1_cond = torch.abs(x_cond - y_cond) < 1e-7 # tensor([False, False, False, False])
+		out2_cond = torch.logical_and( torch.logical_and(x_cond<=0, y_cond<=0), torch.logical_not(out1_cond) ) # tensor([False,  True, False, False])
+		out3_cond = torch.logical_and( torch.logical_and(x_cond>=0, y_cond>=0), torch.logical_not(out1_cond) ) # tensor([False, False, False,  True]) 
 		out4_cond = torch.logical_and( torch.logical_and( torch.logical_not(out1_cond), torch.logical_not(out2_cond) ),
-									   torch.logical_not(out3_cond) ) # All the other conditions must be false
+									torch.logical_not(out3_cond) ) # All the other conditions must be false # tensor([ True, False,  True, False])
 
 		# Final expression
-		# We need to set nan, -inf, inf values to 0.0 since, otherwise, 0*inf may result in NaNs
-		# in the final formula
-		final_out = torch.nan_to_num(out1,nan=0.0,posinf=0.0,neginf=0.0)*out1_cond + \
-			  		torch.nan_to_num(out2,nan=0.0,posinf=0.0,neginf=0.0)*out2_cond + \
-					torch.nan_to_num(out3,nan=0.0,posinf=0.0,neginf=0.0)*out3_cond + \
-					torch.nan_to_num(out4,nan=0.0,posinf=0.0,neginf=0.0)*out4_cond
+		final_out = torch.where(out1_cond,out1,0) + torch.where(out2_cond,out2,0) + torch.where(out3_cond,out3,0) + torch.where(out4_cond,out4,0)
 
 		return final_out
-
 		"""
-		Sequential code
-	
-		if torch.abs(x) > torch.abs(y):
-			out = ParallelTruncatedGaussian._F_1(y, x)
 
-		elif torch.abs(x - y) < 1e-7: #out1_cond
-			out = ParallelTruncatedGaussian._P_1(x, y-x)
-		elif x <= 0 and y <= 0: #out2_cond
-			delt = ParallelTruncatedGaussian._delta(x, y)
-			out = (1 - delt) / (delt*erfcx(-y) - erfcx(-x))  
-		elif x >= 0 and y >= 0: #out3_cond
-			delt = ParallelTruncatedGaussian._delta(x, y)
-			out = (1 - delt) / (erfcx(x) - delt*erfcx(y))
-		else: #out4_cond
-			delt = ParallelTruncatedGaussian._delta(x, y)
-			out = ((1-delt)*torch.exp(-x**2)) / (erf(y)-erf(x))
-		"""
-	
+
 	@staticmethod
 	def _F_2(x_, y_):
 		# All values in tensor @x must be smaller than values in tensor @y
 		x = torch.where(torch.abs(x_)<=torch.abs(y_),x_,y_)
 		y = torch.where(torch.abs(y_)>=torch.abs(x_),y_,x_)
 
+		# Obtain masks
+		with torch.no_grad():
+			out1_cond = torch.abs(x - y) < 1e-7 # tensor([False, False, False, False])
+			out2_cond = torch.logical_and( torch.logical_and(x<=0, y<=0), torch.logical_not(out1_cond) ) # tensor([False,  True, False, False])
+			out3_cond = torch.logical_and( torch.logical_and(x>=0, y>=0), torch.logical_not(out1_cond) ) # tensor([False, False, False,  True]) 
+			out4_cond = torch.logical_and( torch.logical_and( torch.logical_not(out1_cond), torch.logical_not(out2_cond) ),
+										   torch.logical_not(out3_cond) ) # All the other conditions must be false
+
+		# Mask input values for each operation
+		x1, y1 = where(out1_cond, x, 0), where(out1_cond, y, 0)
+		x2, y2 = where(out2_cond, x, -1), where(out2_cond, y, 0)
+		x3, y3 = where(out3_cond, x, 0), where(out3_cond, y, 1)
+		x4, y4 = where(out4_cond, x, 0), where(out4_cond, y, 1)
+
+		# Apply operations
+		delt = ParallelTruncatedGaussian._delta(x, y)
+		x_minus_y_by_delt = x - y*delt
+
+		out1_m = ParallelTruncatedGaussian._P_2(x1, y1-x1)
+		out2_m = x_minus_y_by_delt / (delt*erfcx(-y2) - erfcx(-x2)) 
+		out3_m = x_minus_y_by_delt / (erfcx(x3) - delt*erfcx(y3))
+		out4_m = (x_minus_y_by_delt*torch.exp(-x4**2)) / (erf(y4)-erf(x4))
+
+		# Unmask tensors, by setting masked values to 0
+		out1 = where(out1_cond, out1_m, 0)
+		out2 = where(out2_cond, out2_m, 0)
+		out3 = where(out3_cond, out3_m, 0)
+		out4 = where(out4_cond, out4_m, 0)
+
+		# Add them up into a single tensor
+		final_out = out1 + out2 + out3 + out4
+
+		return final_out
+
+
+		""" OLD
 		# Values
 		delt = ParallelTruncatedGaussian._delta(x, y)
 		x_minus_y_by_delt = x - y*delt
@@ -192,81 +283,82 @@ class ParallelTruncatedGaussian(Distribution):
 		out4 = (x_minus_y_by_delt*torch.exp(-x**2)) / (erf(y)-erf(x))
 
 		# Conditions
-		out1_cond = torch.abs(x - y) < 1e-7
-		out2_cond = torch.logical_and( torch.logical_and(x<=0, y<=0), torch.logical_not(out1_cond) )
-		out3_cond = torch.logical_and( torch.logical_and(x>=0, y>=0), torch.logical_not(out1_cond) )
+		x_cond, y_cond = x.detach(), y.detach()
+
+		out1_cond = torch.abs(x_cond - y_cond) < 1e-7
+		out2_cond = torch.logical_and( torch.logical_and(x_cond<=0, y_cond<=0), torch.logical_not(out1_cond) )
+		out3_cond = torch.logical_and( torch.logical_and(x_cond>=0, y_cond>=0), torch.logical_not(out1_cond) )
 		out4_cond = torch.logical_and( torch.logical_and( torch.logical_not(out1_cond), torch.logical_not(out2_cond) ),
-									   torch.logical_not(out3_cond) ) # All the other conditions must be false
+									torch.logical_not(out3_cond) ) # All the other conditions must be false
 
 		# We need to set nan, -inf, inf values to 0.0 since, otherwise, 0*inf may result in NaNs
 		# in the final formula
-		final_out = torch.nan_to_num(out1,nan=0.0,posinf=0.0,neginf=0.0)*out1_cond + \
-			  		torch.nan_to_num(out2,nan=0.0,posinf=0.0,neginf=0.0)*out2_cond + \
-					torch.nan_to_num(out3,nan=0.0,posinf=0.0,neginf=0.0)*out3_cond + \
-					torch.nan_to_num(out4,nan=0.0,posinf=0.0,neginf=0.0)*out4_cond
+		final_out = out1*out1_cond + \
+			  		out2*out2_cond + \
+					out3*out3_cond + \
+					out4*out4_cond
 
 		return final_out
-
-		"""
-		Sequential code
-		
-		if torch.abs(x) > torch.abs(y):
-			out = ParallelTruncatedGaussian._F_2(y, x)
-
-		elif torch.abs(x - y) < 1e-7: #out1_cond
-			out = ParallelTruncatedGaussian._P_2(x, y-x)
-		elif x <= 0 and y <= 0: #out2_cond
-			delt = ParallelTruncatedGaussian._delta(x, y)
-			out = (x - y*delt) / (delt*erfcx(-y) - erfcx(-x))  
-		elif x >= 0 and y >= 0: #out3_cond 
-			delt = ParallelTruncatedGaussian._delta(x, y)
-			out = (x - y*delt) / (erfcx(x) - delt*erfcx(y))
-		else: #out4_cond
-			delt = ParallelTruncatedGaussian._delta(x, y)
-			out = ((x-y*delt)*torch.exp(-x**2)) / (erf(y)-erf(x))
 		"""
 		
 	
 	# Numerically stable implementation of Z=log(big_phi(beta)-big_phi(alpha))
 	def _calculate_log_Z(self):
-		# Values
-		alpha_beta_sqr_diff = (self._alpha+self._beta)*(self._alpha-self._beta)
-		beta_alpha_sqr_diff = -alpha_beta_sqr_diff
-		out1 = -torch.log( (self._mean-self._mu) / self._sigma ) - LOG_SQRT_2_PI - (self._alpha**2)/2 + \
-				torch.log(1 - torch.exp(alpha_beta_sqr_diff / 2))
-		out2 = -torch.log( (self._mu-self._mean) / self._sigma ) - LOG_SQRT_2_PI - (self._beta**2)/2 + \
-				torch.log(1 - torch.exp(beta_alpha_sqr_diff / 2))
-		out3 = -LOG_2 + torch.log(erf(self._beta*INV_SQRT_2) - erf(self._alpha*INV_SQRT_2))
+		alpha, beta, mu, mean_d = self._alpha, self._beta, self._mu, self._mean.detach()
 
-		# Conditions
-		out1_cond = torch.logical_and(self._alpha>=0, self._beta>=0)
-		out2_cond = torch.logical_and(self._alpha<=0, self._beta<=0)
-		out3_cond = torch.logical_and(torch.logical_not(out1_cond), torch.logical_not(out2_cond))
-		
-		# Final expression
-		# We need to set nan, -inf, inf values to 0.0 since, otherwise, 0*inf may result in NaNs
-		# in the final formula
-		final_out = torch.nan_to_num(out1,nan=0.0,posinf=0.0,neginf=0.0)*out1_cond + \
-			  		torch.nan_to_num(out2,nan=0.0,posinf=0.0,neginf=0.0)*out2_cond + \
-					torch.nan_to_num(out3,nan=0.0,posinf=0.0,neginf=0.0)*out3_cond
+		# Obtain masks
+		with torch.no_grad():
+			out1_cond = torch.logical_and(alpha>=0, beta>=0)
+			out2_cond = torch.logical_and(alpha<=0, beta<=0)
+			out3_cond = torch.logical_and(torch.logical_not(out1_cond), torch.logical_not(out2_cond))
+
+		# Mask input values for each operation
+		alpha1, beta1, mu1 = where(out1_cond, alpha, 0), where(out1_cond, beta, 1), where(out1_cond, mu, mean_d-1)
+		alpha2, beta2, mu2 = where(out2_cond, alpha, 1), where(out2_cond, beta, 0), where(out2_cond, mu, mean_d+1)
+		alpha3, beta3 = where(out3_cond, alpha, 0), where(out3_cond, beta, 1)
+
+		# Apply operations
+		out1_m = -torch.log( (self._mean-mu1) / self._sigma ) - LOG_SQRT_2_PI - (alpha1**2)/2 + \
+				torch.log(1 - torch.exp( (alpha1+beta1)*(alpha1-beta1) / 2 ))
+		out2_m = -torch.log( (mu2-self._mean) / self._sigma ) - LOG_SQRT_2_PI - (beta2**2)/2 + \
+			    torch.log(1 - torch.exp( (alpha2+beta2)*(beta2-alpha2) / 2))
+		out3_m = -LOG_2 + torch.log(erf(beta3*INV_SQRT_2) - erf(alpha3*INV_SQRT_2))
+
+		# Unmask tensors, by setting masked values to 0
+		out1 = where(out1_cond, out1_m, 0)
+		out2 = where(out2_cond, out2_m, 0)
+		out3 = where(out3_cond, out3_m, 0)
+
+		# Add them up into a single tensor
+		final_out = out1 + out2 + out3
 
 		return final_out
 
 		"""
-		Sequential code
+		OLD
+		# Values
+		alpha_beta_sqr_diff = (self._alpha+self._beta)*(self._alpha-self._beta)
+		beta_alpha_sqr_diff = -alpha_beta_sqr_diff
 		
-		if self._alpha>=0 and self._beta>=0: # mu is smaller or equal than a and b #out1_cond
-			alpha_beta_sqr_diff = (self._alpha+self._beta)*(self._alpha-self._beta) # alpha**2 - beta**2
-			result = -torch.log( (self._mean-self._mu) / self._sigma ) - LOG_SQRT_2_PI - (self._alpha**2)/2 + \
-					torch.log(1 - torch.exp(alpha_beta_sqr_diff / 2))
+		out1 = -torch.log( (self._mean-self._mu) / self._sigma ) - LOG_SQRT_2_PI - (self._alpha**2)/2 + \
+				torch.log(1 - torch.exp(alpha_beta_sqr_diff / 2))
+
+		# torch.log(1 - torch.exp(beta_alpha_sqr_diff / 2)) makes gradient NaN
+		out2 = -torch.log( (self._mu-self._mean) / self._sigma ) - LOG_SQRT_2_PI - (self._beta**2)/2 + \
+			   torch.log(1 - torch.exp(beta_alpha_sqr_diff / 2))
 		
-		elif self._alpha<=0 and self._beta<=0: # mu is larger or equal than a and b #out2_cond
-			beta_alpha_sqr_diff = (self._beta+self._alpha)*(self._beta-self._alpha) # beta**2 - alpha**2
-			result = -torch.log( (self._mu-self._mean) / self._sigma ) - LOG_SQRT_2_PI - (self._beta**2)/2 + \
-					torch.log(1 - torch.exp(beta_alpha_sqr_diff / 2))
-		
-		else: # alpha and beta have different sign (which means mu lies in the interval [a,b]) #out3_cond
-			result = -LOG_2 + torch.log(erf(self._beta*INV_SQRT_2) - erf(self._alpha*INV_SQRT_2))
+		out3 = -LOG_2 + torch.log(erf(self._beta*INV_SQRT_2) - erf(self._alpha*INV_SQRT_2))
+
+		# Conditions
+		alpha_cond, beta_cond = self._alpha.detach(), self._beta.detach()
+
+		out1_cond = torch.logical_and(alpha_cond>=0, beta_cond>=0)
+		out2_cond = torch.logical_and(alpha_cond<=0, beta_cond<=0)
+		out3_cond = torch.logical_and(torch.logical_not(out1_cond), torch.logical_not(out2_cond))
+	
+		final_out = torch.where(out1_cond, out1, 0) + torch.where(out2_cond, out2, 0) + torch.where(out3_cond, out3, 0)  
+
+		return final_out
 		"""
 		
 	
@@ -275,7 +367,7 @@ class ParallelTruncatedGaussian(Distribution):
 	# Mean of the distribution (after truncation)
 	def _calculate_mean(self):
 		cls = self.__class__
-		fraction = (SQRT_2 / SQRT_PI) * cls._F_1(self._alpha*INV_SQRT_2, self._beta*INV_SQRT_2)
+		fraction = SQRT_2_DIV_SQRT_PI * cls._F_1(self._alpha*INV_SQRT_2, self._beta*INV_SQRT_2)
 		result = self._mu + fraction*self._sigma
 
 		return result
