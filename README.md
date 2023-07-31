@@ -47,4 +47,4 @@ The class obtained by doing `from stable_trunc_gaussian import TruncatedGaussian
 
 # Acknowledgements
 
-We want to thank user [KFrank](https://discuss.pytorch.org/u/KFrank) for his help in solving the bug when computing the gradients for the parallel version (bug solved in version 1.1.1).
+We want to thank users [KFrank](https://discuss.pytorch.org/u/KFrank) and [ptrblck](https://discuss.pytorch.org/u/ptrblck) for their help in solving the bug when computing the gradients for the parallel version (bug solved in version 1.1.1).
