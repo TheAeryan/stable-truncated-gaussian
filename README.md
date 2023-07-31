@@ -1,4 +1,4 @@
-`[![PyPI version](https://badge.fury.io/py/stable-trunc-gaussian.svg)](https://badge.fury.io/py/stable-trunc-gaussian)
+[![PyPI version](https://badge.fury.io/py/stable-trunc-gaussian.svg)](https://badge.fury.io/py/stable-trunc-gaussian)
 [![Downloads](https://static.pepy.tech/badge/stable-trunc-gaussian)](https://pepy.tech/project/stable-trunc-gaussian)
 
 # Stable Truncated Gaussian
