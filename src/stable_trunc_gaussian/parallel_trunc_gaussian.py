@@ -5,13 +5,13 @@ Implementation of truncated gaussian which results numerically stable even when 
 interval [a,b] given by the bounds.
 In order to obtain this implementation, we have employed the formulas detailed on https://github.com/cossio/
 TruncatedNormal.jl/blob/23bfc7d0189ca6857e2e498006bbbed2a8b58be7/notes/normal.pdf
-
-Right now, we only implement the following methods: mean, variance and log_prob.
+Our implementation is also inspired by torch_truncnorm: https://github.com/toshas/torch_truncnorm/blob/main/TruncatedNormal.py#L40
 """
 
 import torch
 from torch.special import erf, erfc, erfcx
 from torch.distributions import Distribution, constraints
+from torch.distributions.kl import register_kl
 from torch import where
 import math
 
@@ -26,12 +26,37 @@ SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 LOG_SQRT_2_PI = math.log(SQRT_2_PI)
 LOG_2 = math.log(2)
 
+"""
+--- KL Divergence ---
+Function for calculating the KL divergence between two Truncated Gaussian distributions.
 
-EPS = torch.finfo(torch.float32).eps
+We use the formulas detailed in the paper "Statistical Divergences between 
+Densities of Truncated Exponential Families with Nested Supports: Duo Bregman
+ and Duo Jensen Divergences" by Frank Nielsen (see Eq. 111).
+"""
+@register_kl(ParallelTruncatedGaussian, ParallelTruncatedGaussian)
+def kl_truncgauss_truncgauss(d1, d2):
+	mu1, sigma1, a1, b1, log_Z1, mean1, var1 = d1.mu, d1.sigma, d1.a, d1.b, d1.log_Z, d1.mean, d1.variance
+	mu2, sigma2, a2, b2, log_Z2, mean2, var2 = d2.mu, d2.sigma, d2.a, d2.b, d2.log_Z, d2.mean, d2.variance
+	inv_sqr_sigma1 = 1/(sigma1**2)
+	inv_sqr_sigma2 = 1/(sigma2**2)
+
+	# The interval [a1, b1] must be inside the interval [a2, b2]
+	# Otherwise, the KL divergence is infinite
+	if a1 < a2 or b1 > b2:
+		raise Exception(f"Interval [a1={a1}, b1={b1}] must be inside interval [a2={a2}, b2={b2}]. Otherwise, KL Divergence equals +inf.")
+
+	# Calculate KL(d1 || d2)
+	kl_divergence = 0.5*mu2*inv_sqr_sigma2 - 0.5*mu1*inv_sqr_sigma1 + torch.log(sigma2/sigma1) + log_Z2 - log_Z1 - \
+					(mu2*inv_sqr_sigma2 - mu1*inv_sqr_sigma1)*mean1 - (0.5*inv_sqr_sigma1 - 0.5*inv_sqr_sigma2)*(var1+mean1**2)
+
+	return kl_divergence
+
+
 
 class ParallelTruncatedGaussian(Distribution):
 
-	has_rsample = False
+	has_rsample = True
 
 	arg_constraints = {
 		'mu': constraints.real,
@@ -213,6 +238,8 @@ class ParallelTruncatedGaussian(Distribution):
 
 		return final_out
 
+	# --- Main methods ---
+
 	# Numerically stable implementation of Z=log(big_phi(beta)-big_phi(alpha))
 	def _calculate_log_Z(self):
 		alpha, beta, mu, mean_d = self._alpha, self._beta, self._mu, self._mean.detach()
@@ -232,7 +259,7 @@ class ParallelTruncatedGaussian(Distribution):
 		out1_m = -torch.log( (self._mean-mu1) / self._sigma ) - LOG_SQRT_2_PI - (alpha1**2)/2 + \
 				torch.log(1 - torch.exp( (alpha1+beta1)*(alpha1-beta1) / 2 ))
 		out2_m = -torch.log( (mu2-self._mean) / self._sigma ) - LOG_SQRT_2_PI - (beta2**2)/2 + \
-			    torch.log(1 - torch.exp( (alpha2+beta2)*(beta2-alpha2) / 2))
+				torch.log(1 - torch.exp( (alpha2+beta2)*(beta2-alpha2) / 2))
 		out3_m = -LOG_2 + torch.log(erf(beta3*INV_SQRT_2) - erf(alpha3*INV_SQRT_2))
 
 		# Unmask tensors, by setting masked values to 0
@@ -245,7 +272,9 @@ class ParallelTruncatedGaussian(Distribution):
 
 		return final_out	
 	
-	# --- Main methods ---
+	@property
+	def log_Z(self):
+		return self._log_Z
 
 	# Mean of the distribution (after truncation)
 	def _calculate_mean(self):
@@ -291,3 +320,23 @@ class ParallelTruncatedGaussian(Distribution):
 		result = term_1 + term_2 + term_3
 
 		return result
+
+
+	# Inverse cumulative distribution function
+	def icdf(self, x):
+		raise NotImplementedError()
+
+
+	"""
+	From https://pytorch.org/docs/stable/distributions.html
+	Generates a sample_shape shaped reparameterized sample or sample_shape shaped batch of 
+	reparameterized samples if the distribution parameters are batched.
+	This sampling process is differentiable.
+	"""
+	def rsample(self, sample_shape: torch.Size = torch.Size()):
+		shape = self._extended_shape(sample_shape)
+		
+		p = torch.empty(shape, device=self._mu.device).uniform_(0,1)
+		
+		return self.icdf(p)
+
