@@ -26,33 +26,6 @@ SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 LOG_SQRT_2_PI = math.log(SQRT_2_PI)
 LOG_2 = math.log(2)
 
-"""
---- KL Divergence ---
-Function for calculating the KL divergence between two Truncated Gaussian distributions.
-
-We use the formulas detailed in the paper "Statistical Divergences between 
-Densities of Truncated Exponential Families with Nested Supports: Duo Bregman
- and Duo Jensen Divergences" by Frank Nielsen (see Eq. 111).
-"""
-@register_kl(ParallelTruncatedGaussian, ParallelTruncatedGaussian)
-def kl_truncgauss_truncgauss(d1, d2):
-	mu1, sigma1, a1, b1, log_Z1, mean1, var1 = d1.mu, d1.sigma, d1.a, d1.b, d1.log_Z, d1.mean, d1.variance
-	mu2, sigma2, a2, b2, log_Z2, mean2, var2 = d2.mu, d2.sigma, d2.a, d2.b, d2.log_Z, d2.mean, d2.variance
-	inv_sqr_sigma1 = 1/(sigma1**2)
-	inv_sqr_sigma2 = 1/(sigma2**2)
-
-	# The interval [a1, b1] must be inside the interval [a2, b2]
-	# Otherwise, the KL divergence is infinite
-	if a1 < a2 or b1 > b2:
-		raise Exception(f"Interval [a1={a1}, b1={b1}] must be inside interval [a2={a2}, b2={b2}]. Otherwise, KL Divergence equals +inf.")
-
-	# Calculate KL(d1 || d2)
-	kl_divergence = 0.5*mu2*inv_sqr_sigma2 - 0.5*mu1*inv_sqr_sigma1 + torch.log(sigma2/sigma1) + log_Z2 - log_Z1 - \
-					(mu2*inv_sqr_sigma2 - mu1*inv_sqr_sigma1)*mean1 - (0.5*inv_sqr_sigma1 - 0.5*inv_sqr_sigma2)*(var1+mean1**2)
-
-	return kl_divergence
-
-
 
 class ParallelTruncatedGaussian(Distribution):
 
@@ -340,3 +313,36 @@ class ParallelTruncatedGaussian(Distribution):
 		
 		return self.icdf(p)
 
+"""
+--- KL Divergence ---
+Function for calculating the KL divergence between two Truncated Gaussian distributions.
+
+We use the formulas detailed in the paper "Statistical Divergences between 
+Densities of Truncated Exponential Families with Nested Supports: Duo Bregman
+and Duo Jensen Divergences" by Frank Nielsen (see Eq. 111).
+
+Don't call this function directly. Instead, do the following:
+
+	from torch.distributions.kl import kl_divergence
+
+	...
+
+	value = kl_divergence(trunc_gauss_1, trunc_gauss_2)
+"""
+@register_kl(ParallelTruncatedGaussian, ParallelTruncatedGaussian)
+def kl_truncgauss_truncgauss(d1, d2):
+	mu1, sigma1, a1, b1, log_Z1, mean1, var1 = d1.mu, d1.sigma, d1.a, d1.b, d1.log_Z, d1.mean, d1.variance
+	mu2, sigma2, a2, b2, log_Z2, mean2, var2 = d2.mu, d2.sigma, d2.a, d2.b, d2.log_Z, d2.mean, d2.variance
+	inv_sqr_sigma1 = 1/(sigma1**2)
+	inv_sqr_sigma2 = 1/(sigma2**2)
+
+	# The interval [a1, b1] must be inside the interval [a2, b2]
+	# Otherwise, the KL divergence is infinite
+	if a1 < a2 or b1 > b2:
+		raise Exception(f"Interval [a1={a1}, b1={b1}] must be inside interval [a2={a2}, b2={b2}]. Otherwise, KL Divergence equals +inf.")
+
+	# Calculate KL(d1 || d2)
+	kl_divergence = 0.5*mu2*inv_sqr_sigma2 - 0.5*mu1*inv_sqr_sigma1 + torch.log(sigma2/sigma1) + log_Z2 - log_Z1 - \
+					(mu2*inv_sqr_sigma2 - mu1*inv_sqr_sigma1)*mean1 - (0.5*inv_sqr_sigma1 - 0.5*inv_sqr_sigma2)*(var1+mean1**2)
+
+	return kl_divergence
