@@ -116,7 +116,7 @@ class ParallelTruncatedGaussian(Distribution):
 
 	@staticmethod
 	def _inv_big_phi(x):
-        return SQRT_2 * erfinv(2*x-1)
+		return SQRT_2 * erfinv(2*x-1)
 
 	@staticmethod
 	def _delta(x, y):
