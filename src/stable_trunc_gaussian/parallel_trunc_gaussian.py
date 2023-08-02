@@ -9,7 +9,7 @@ Our implementation is also inspired by torch_truncnorm: https://github.com/tosha
 """
 
 import torch
-from torch.special import erf, erfc, erfcx
+from torch.special import erf, erfc, erfcx, erfinv
 from torch.distributions import Distribution, constraints
 from torch.distributions.kl import register_kl
 from torch import where
@@ -70,6 +70,10 @@ class ParallelTruncatedGaussian(Distribution):
 
 		# Calculate log(Z) = log(big_phi(beta)-big_phi(alpha))
 		self._log_Z = self._calculate_log_Z()
+		self._Z = torch.exp(self._log_Z)
+
+		# big_phi(alpha), used in the icdf (and rsample) methods
+		self._big_phi_alpha = self._big_phi(self._alpha)
 
 	# I override __repr__ because parameter names that appear in arg_constraints are of the form
 	# 'param' but instance attributes are of the form '_param' 
@@ -105,6 +109,14 @@ class ParallelTruncatedGaussian(Distribution):
 		return self._beta
 	
 	# --- Auxiliary methods ---
+
+	@staticmethod
+	def _big_phi(x):
+		return 0.5*(1 + erf(INV_SQRT_2*x))
+
+	@staticmethod
+	def _inv_big_phi(x):
+        return SQRT_2 * erfinv(2*x-1)
 
 	@staticmethod
 	def _delta(x, y):
@@ -249,6 +261,10 @@ class ParallelTruncatedGaussian(Distribution):
 	def log_Z(self):
 		return self._log_Z
 
+	@property
+	def Z(self):
+		return self._Z
+
 	# Mean of the distribution (after truncation)
 	def _calculate_mean(self):
 		cls = self.__class__
@@ -288,23 +304,24 @@ class ParallelTruncatedGaussian(Distribution):
 
 		xi = (x-self._mu)/self._sigma
 		term_1 = -torch.log(self._sigma)
-		term_2 = -LOG_SQRT_2_PI - (xi**2)/2    
+		term_2 = -LOG_SQRT_2_PI - (xi**2)/2
 		term_3 = -self._log_Z
 		result = term_1 + term_2 + term_3
 
 		return result
 
-
 	# Inverse cumulative distribution function
 	def icdf(self, x):
-		raise NotImplementedError()
-
+		return self._inv_big_phi( self._big_phi_alpha + x*self._Z )*self._sigma + self._mu
 
 	"""
 	From https://pytorch.org/docs/stable/distributions.html
 	Generates a sample_shape shaped reparameterized sample or sample_shape shaped batch of 
 	reparameterized samples if the distribution parameters are batched.
 	This sampling process is differentiable.
+	Current rsample implementation extracted from https://github.com/toshas/torch_truncnorm
+
+	Note: right now, the implementation of rsample is numerically unstable!!
 	"""
 	def rsample(self, sample_shape: torch.Size = torch.Size()):
 		shape = self._extended_shape(sample_shape)
