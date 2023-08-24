@@ -8,8 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import truncnorm
 
-a = 20
-b = 20.1
+mu = 20
+sigma = 2
+a = -21
+b = -20.9
 
 # prob(x) given by the original truncated gaussian N(x|mu,sigma,a,b)
 def prob_tn(a,b,x):
@@ -56,25 +58,64 @@ def sqr_prob_exp(a, b, x):
 def stable_icdf(a,b,perc):
     assert perc>=0 and perc<=1
 
-    if perc == 1: # We need this extreme case because, otherwise, we get log(0)
-        return b
+    if a>=0 and b>=0:
+        if perc == 1: # We need this extreme case because, otherwise, we get log(0)
+            return b
 
-    # Calculate lambda parameter of the distribution
-    # It is equal to N(x=a|mu,sigma,a,b)
-    _lambda = math.exp(TG(mu=t(0),sigma=t(1),a=t(a),b=t(b)).log_prob(t(a)).item())  
+        # Calculate lambda parameter of the distribution
+        # It is equal to N(x=a|mu,sigma,a,b)
+        _lambda = math.exp(TG(mu=t(0),sigma=t(1),a=t(a),b=t(b)).log_prob(t(a)).item())
 
-    # We add "a" to the result because, otherwise, result would be given
-    # as an offset of a (and we want to obtain the absolute value in the number line)
-    result = (-math.log(1-perc) / _lambda) + a 
+        # We add "a" to the result because, otherwise, result would be given
+        # as an offset of a (and we want to obtain the absolute value in the number line)
+        result = a + (-math.log(1-perc) / _lambda) 
 
-    # We need to make sure that result is never larger than b
-    clip_result = min(result, b)
+        # We need to make sure that result is never larger than b
+        clip_result = min(result, b)
+
+    # Same as the previous case, but the exp distribution now goes from b to a (instead of from a to b)
+    elif a<=0 and b<=0:
+        if perc == 0: # We need this extreme case because, otherwise, we get log(0)
+            return a
+        
+        # Calculate lambda parameter of the distribution
+        # It is equal to N(x=b|mu,sigma,a,b)
+        _lambda = math.exp(TG(mu=t(0),sigma=t(1),a=t(a),b=t(b)).log_prob(t(b)).item())  
+
+        # The result is given as a negative offset from b
+        # result = b - (-math.log(1-(1-perc)) / _lambda)
+        result = b + math.log(perc) / _lambda # Equivalent to the line commented above
+
+        # We need to make sure that result is never larger than b
+        clip_result = max(result, a)
+
+    else:
+        raise Exception("Right now, we assume that a and b have the same sign")
 
     return clip_result
+
+
+def stable_icdf_mu_sigma(mu,sigma,a,b,perc):
+    alpha = (a-mu)/sigma
+    beta = (b-mu)/sigma
+
+    normalized_result = stable_icdf(a=alpha,b=beta,perc=perc)
+
+    result = normalized_result*sigma + mu
+
+    return result
+
 
 # Same as the function above, but using scipy
 def scipy_icdf(a,b,perc):
     return truncnorm.ppf(q=perc, a=a, b=b, loc=0, scale=1)
+
+def scipy_icdf_mu_sigma(mu,sigma,a,b,perc):
+    a_, b_ = (a - mu) / sigma, (b - mu) / sigma
+    result = truncnorm.ppf(q=perc, a=a_, b=b_, loc=mu, scale=sigma)
+
+    return result
+
 
 # It compares the probabilities obtained using TN and the exp approximation
 def compare_probs(a,b):
@@ -116,10 +157,28 @@ def compare_icdfs(a,b):
     plt.grid(True)
     plt.show()
 
+def compare_icdfs_mu_sigma(mu,sigma,a,b):
+    # Generate x values from 0 to 1
+    x_values = np.linspace(0, 1, 1000)  # Adjust the number of points as needed
+
+    # Calculate corresponding y values for both functions
+    y_stable = [stable_icdf_mu_sigma(mu, sigma, a, b, perc=x) for x in x_values]
+    y_scipy = [scipy_icdf_mu_sigma(mu, sigma, a, b, perc=x) for x in x_values]
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(x_values, y_stable, linewidth=1, label='My implementation')
+    plt.plot(x_values, y_scipy, linewidth=1, label='Scipy')
+    plt.xlabel('Percentile')
+    plt.ylabel('Value')
+    plt.title(f"Comparison of my icdf and scipy's with mu={mu}, sigma={sigma}, a={a} and b={b}")
+    plt.legend()
+    plt.grid(True)
+    plt.show()   
 
 
-
-compare_icdfs(a,b)
+# compare_icdfs(a,b)
+compare_icdfs_mu_sigma(mu,sigma,a,b)
 
 #print(stable_icdf(a,b,0.8))
 #compare_probs(a,b)
@@ -142,6 +201,11 @@ The exp is a good approximation to TN as long as a>>mu and the interval [a,b] is
 - Once we a good approximation of TN with exp, then obtain the icdf of exp.
   Add "a" to the result of icdf(exp(x)).
   Clip result between a and b.
+
+Our approximation is good in most cases (mu far from [a,b] interval and [a,b] interval not too small)
+Another issue is that we sometimes need to clip values for percentiles close to 0 (when a,b<0) or
+close to 1 (when a,b>0)
+
 - See how to normalize a,b,x when mu!=0 and sigma!=1
 - See how large/small alpha,beta need to be in order to use this approximation instead of the original
   icdf formula
