@@ -6,8 +6,8 @@ from torch import tensor as t
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import truncnorm
 
-x = 10
 a = 20
 b = 20.1
 
@@ -51,7 +51,33 @@ def sqr_prob_exp(a, b, x):
     # val2 works better than val1
     return val2
 
-def compare_functions(a,b):
+# stable icdf of TN approximating its tail as an exponential distribution
+# @perc The percentile, a number between 0 and 1
+def stable_icdf(a,b,perc):
+    assert perc>=0 and perc<=1
+
+    if perc == 1: # We need this extreme case because, otherwise, we get log(0)
+        return b
+
+    # Calculate lambda parameter of the distribution
+    # It is equal to N(x=a|mu,sigma,a,b)
+    _lambda = math.exp(TG(mu=t(0),sigma=t(1),a=t(a),b=t(b)).log_prob(t(a)).item())  
+
+    # We add "a" to the result because, otherwise, result would be given
+    # as an offset of a (and we want to obtain the absolute value in the number line)
+    result = (-math.log(1-perc) / _lambda) + a 
+
+    # We need to make sure that result is never larger than b
+    clip_result = min(result, b)
+
+    return clip_result
+
+# Same as the function above, but using scipy
+def scipy_icdf(a,b,perc):
+    return truncnorm.ppf(q=perc, a=a, b=b, loc=0, scale=1)
+
+# It compares the probabilities obtained using TN and the exp approximation
+def compare_probs(a,b):
     # Generate x values from a to 2*a
     x_values = np.linspace(a, b, 1000)  # Adjust the number of points as needed
 
@@ -68,11 +94,35 @@ def compare_functions(a,b):
     plt.title('Comparison of prob_tn and prob_exp Functions')
     plt.legend()
     plt.grid(True)
+    plt.show()  
+
+# It compares the icdf of the TN obtained "directly" (using scipy) and with our exp approximation
+def compare_icdfs(a,b):
+    # Generate x values from 0 to 1
+    x_values = np.linspace(0, 1, 1000)  # Adjust the number of points as needed
+
+    # Calculate corresponding y values for both functions
+    y_stable = [stable_icdf(a, b, perc=x) for x in x_values]
+    y_scipy = [scipy_icdf(a, b, perc=x) for x in x_values]
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(x_values, y_stable, linewidth=1, label='My implementation')
+    plt.plot(x_values, y_scipy, linewidth=1, label='Scipy')
+    plt.xlabel('Percentile')
+    plt.ylabel('Value')
+    plt.title(f"Comparison of my icdf and scipy's with a={a} and b={b}")
+    plt.legend()
+    plt.grid(True)
     plt.show()
 
 
 
-# compare_functions(a,b)
+
+compare_icdfs(a,b)
+
+#print(stable_icdf(a,b,0.8))
+#compare_probs(a,b)
 
 """
 # print("Scipy log-prob:", truncnorm.logpdf(a, a=a, b=b, loc=0, scale=1))
