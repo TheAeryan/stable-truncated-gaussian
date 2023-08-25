@@ -311,11 +311,6 @@ class ParallelTruncatedGaussian(Distribution):
 
 		return result
 
-	# Inverse cumulative distribution function
-	# Old implementation (unstable)
-	def unstable_icdf(self, x):
-		return self._inv_big_phi( self._big_phi_alpha + x*self._Z )*self._sigma + self._mu
-
 	def icdf(self, perc):
 		# This variable is used to decide when to use the "straightforward" formula for the
 		# TN icdf and when to use the exp-based formula (which only works for the tails of the TN)
@@ -324,7 +319,7 @@ class ParallelTruncatedGaussian(Distribution):
 		if not isinstance(perc, torch.Tensor):
 			raise ValueError("parameter 'perc' must be an instance of torch.Tensor") 
 
-		alpha, beta = self._alpha, self._beta
+		alpha, beta, mu, sigma = self._alpha, self._beta, self._mu, self._sigma
 		# Prob given by the N(x|mu,sigma,a,b) dist. to x=a and x=b
 		prob_a, prob_b = torch.exp(self.log_prob(self._a)), torch.exp(self.log_prob(self._b))
 
@@ -343,17 +338,22 @@ class ParallelTruncatedGaussian(Distribution):
 
 
 		# Mask input values for each operation
-		# TODO
+		# For those perc values that are either 0 or 1, why put them to 0.5 to avoid 
+		# log(0) (note that this values are not used for the final result, since they are masked out)
+		perc_3_4 = where(t_or(perc==0,perc==1), 0.5, perc) 
+
+		# For the stable formula, the input to _inv_big_phi must be 0.5 for masked values
+
 
 		# Apply operations
 		out1_m = self._a
 		out2_m = self._b
-
-		# TODO
 		# Right tail approximation
+		out3_m = torch.amin(alpha + (-torch.log(1-perc) / prob_a), beta)*sigma + mu
 		# Left tail approximation
+		out4_m = torch.amax(beta + torch.log(perc) / prob_b, alpha)*sigma + mu
 		# Straightforward formula
-		
+		out5_m = self._inv_big_phi( self._big_phi_alpha + perc*self._Z )*sigma + mu
 
 
 
