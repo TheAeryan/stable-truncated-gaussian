@@ -11,8 +11,8 @@ from scipy.stats import truncnorm
 
 mu = 0
 sigma = 1
-a = -1
-b = 1
+a = 5
+b = 5.1
 
 # prob(x) given by the original truncated gaussian N(x|mu,sigma,a,b)
 def prob_tn(a,b,x):
@@ -180,7 +180,7 @@ def compare_icdfs_mu_sigma(mu,sigma,a,b):
 # Like the function above, but now it uses the icdf method from TruncatedGaussian to
 # obtain the icdf
 def compare_icdfs_mu_sigma_list(mu, sigma, a, b):
-    num_points = 1000
+    num_points = 100000
 
     # Obtain icdf using TG
     perc_t = torch.linspace(0, 1, steps=num_points)
@@ -192,6 +192,10 @@ def compare_icdfs_mu_sigma_list(mu, sigma, a, b):
     a_, b_ = (a - mu) / sigma, (b - mu) / sigma # Scipy assumes a,b are given in relative units, as N times sigma from mu
     perc_l = np.linspace(0, 1, num_points)
     icdfs_scipy = [truncnorm.ppf(q=p, a=a_, b=b_, loc=mu, scale=sigma) for p in perc_l]
+
+    #print("TG icdfs:", icdfs_tg)
+    #print("Scipy icdfs:", icdfs_scipy)
+    print(icdfs_tg[1], icdfs_tg[-2])
 
     # Create the plot
     plt.figure(figsize=(10, 6))
@@ -213,6 +217,11 @@ if __name__=='__main__':
     #compare_probs(a,b)
 
 
+"""
+Different icdfs - Scipy:0.5075734841376036, TN:0.4944124221801758 - percentile:0.01, mu:10, sigma:1, a:-1, b:1
+Different icdfs - Scipy:20.61450662954121, TN:81.4306640625 - percentile:0.4598, mu:-10000, sigma:100, a:20, b:2000
+
+"""
 
 
 

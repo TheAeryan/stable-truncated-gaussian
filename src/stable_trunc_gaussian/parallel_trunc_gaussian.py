@@ -326,7 +326,7 @@ class ParallelTruncatedGaussian(Distribution):
 
 		# This variable is used to decide when to use the "straightforward" formula for the
 		# TN icdf and when to use the exp-based formula (which only works for the tails of the TN)
-		threshold = 5
+		threshold = 4
 
 		if not isinstance(perc, torch.Tensor):
 			raise ValueError("parameter 'perc' must be an instance of torch.Tensor") 
@@ -342,7 +342,7 @@ class ParallelTruncatedGaussian(Distribution):
 			# right tail approximation
 			out3_cond = t_and(alpha>=threshold, t_not(t_or(out1_cond, out2_cond)))
 			# left tail approximation
-			out4_cond = t_and(beta<=threshold , t_not(t_or(out1_cond, out2_cond)))
+			out4_cond = t_and(beta<=-threshold , t_not(t_or(out1_cond, out2_cond)))
 			# straightforward formula
 			out5_cond = t_not(t_or(t_or(t_or(out1_cond, out2_cond), out3_cond), out4_cond))
 
@@ -360,11 +360,13 @@ class ParallelTruncatedGaussian(Distribution):
 		out1_m = self._a
 		out2_m = self._b
 		# Right tail approximation
-		out3_m = torch.amin(alpha + (-torch.log(1-perc_3_4) / prob_a), beta)*sigma + mu
+		out3_m = torch.clip(alpha + (-torch.log(1-perc_3_4) / prob_a), max=beta)*sigma + mu
 		# Left tail approximation
-		out4_m = torch.amax(beta + torch.log(perc_3_4) / prob_b, alpha)*sigma + mu
+		out4_m = torch.clip(beta + torch.log(perc_3_4) / prob_b, min=alpha)*sigma + mu
 		# Straightforward formula
-		out5_m = self._inv_big_phi( inv_big_phi_input_m )*sigma + mu
+		# We clip the result because sometimes, inv_big_phi can return a value slightly smaller than alpha
+		# or larger than beta (e.g., 3.9999 when alpha is 4)
+		out5_m = torch.clip(self._inv_big_phi( inv_big_phi_input_m ), min=alpha, max=beta)*sigma + mu
 
 		# Unmask tensors, by setting masked values to 0
 		out1 = where(out1_cond, out1_m, 0)
