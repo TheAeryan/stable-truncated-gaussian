@@ -228,6 +228,11 @@ class ParallelTruncatedGaussian(Distribution):
 
 	# Numerically stable implementation of Z=log(big_phi(beta)-big_phi(alpha))
 	def _calculate_log_Z(self):
+		# torch.where autograd does not work correctly when there are NaN or inf values
+		# (even if those values are not chosen by the condition in torch.where)
+		# https://discuss.pytorch.org/t/incorrect-gradient-calculation-with-torch-where-and-nans/185367
+		# Therefore, we need to avoid getting NaN or inf for ANY operation
+
 		alpha, beta, mu, mean_d = self._alpha, self._beta, self._mu, self._mean.detach()
 
 		# Obtain masks
@@ -311,7 +316,14 @@ class ParallelTruncatedGaussian(Distribution):
 
 		return result
 
+	# Inverse cdf function or percentile function (ppf)
+	# @perc Percentile, a real number between 0 and 1 (both included)
 	def icdf(self, perc):
+		# Due to numerical unstability, when computing icdf for large (positive or negative) alpha, beta
+		# we don't use the "straightforward" formula but, rather, approximate the tail of the gaussian using
+		# an exponential distribution
+		# See: https://math.stackexchange.com/questions/4746255/numerically-stable-method-for-sampling-from-truncated-normal-distribution/4746917#4746917
+
 		# This variable is used to decide when to use the "straightforward" formula for the
 		# TN icdf and when to use the exp-based formula (which only works for the tails of the TN)
 		threshold = 5
@@ -340,6 +352,7 @@ class ParallelTruncatedGaussian(Distribution):
 		perc_3_4 = where(t_or(perc==0,perc==1), 0.5, perc) 
 
 		# For the stable formula, the input to _inv_big_phi must be 0.5 for masked values
+		# Otherwise, we could get -inf (for 0) or inf (for 1)
 		inv_big_phi_input = self._big_phi_alpha + perc*self._Z
 		inv_big_phi_input_m = where(out5_cond, inv_big_phi_input, 0.5)
 
