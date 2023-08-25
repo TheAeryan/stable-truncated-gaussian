@@ -334,28 +334,36 @@ class ParallelTruncatedGaussian(Distribution):
 			# straightforward formula
 			out5_cond = t_not(t_or(t_or(t_or(out1_cond, out2_cond), out3_cond), out4_cond))
 
-			
-
-
 		# Mask input values for each operation
 		# For those perc values that are either 0 or 1, why put them to 0.5 to avoid 
 		# log(0) (note that this values are not used for the final result, since they are masked out)
 		perc_3_4 = where(t_or(perc==0,perc==1), 0.5, perc) 
 
 		# For the stable formula, the input to _inv_big_phi must be 0.5 for masked values
-
+		inv_big_phi_input = self._big_phi_alpha + perc*self._Z
+		inv_big_phi_input_m = where(out5_cond, inv_big_phi_input, 0.5)
 
 		# Apply operations
 		out1_m = self._a
 		out2_m = self._b
 		# Right tail approximation
-		out3_m = torch.amin(alpha + (-torch.log(1-perc) / prob_a), beta)*sigma + mu
+		out3_m = torch.amin(alpha + (-torch.log(1-perc_3_4) / prob_a), beta)*sigma + mu
 		# Left tail approximation
-		out4_m = torch.amax(beta + torch.log(perc) / prob_b, alpha)*sigma + mu
+		out4_m = torch.amax(beta + torch.log(perc_3_4) / prob_b, alpha)*sigma + mu
 		# Straightforward formula
-		out5_m = self._inv_big_phi( self._big_phi_alpha + perc*self._Z )*sigma + mu
+		out5_m = self._inv_big_phi( inv_big_phi_input_m )*sigma + mu
 
+		# Unmask tensors, by setting masked values to 0
+		out1 = where(out1_cond, out1_m, 0)
+		out2 = where(out2_cond, out2_m, 0)
+		out3 = where(out3_cond, out3_m, 0)
+		out4 = where(out4_cond, out4_m, 0)
+		out5 = where(out5_cond, out5_m, 0)
 
+		# Add them up into a single tensor
+		final_out = out1 + out2 + out3 + out4 + out5
+
+		return final_out
 
 
 	"""
