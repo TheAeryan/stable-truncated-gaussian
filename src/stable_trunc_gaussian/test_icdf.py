@@ -2,16 +2,17 @@
 
 from scipy.stats import truncnorm
 from parallel_trunc_gaussian import ParallelTruncatedGaussian as TG
+import torch
 from torch import tensor as t
 import math
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import truncnorm
 
-mu = 20
-sigma = 2
-a = -21
-b = -20.9
+mu = 0
+sigma = 1
+a = -1
+b = 1
 
 # prob(x) given by the original truncated gaussian N(x|mu,sigma,a,b)
 def prob_tn(a,b,x):
@@ -176,12 +177,44 @@ def compare_icdfs_mu_sigma(mu,sigma,a,b):
     plt.grid(True)
     plt.show()   
 
+# Like the function above, but now it uses the icdf method from TruncatedGaussian to
+# obtain the icdf
+def compare_icdfs_mu_sigma_list(mu, sigma, a, b):
+    num_points = 1000
 
-# compare_icdfs(a,b)
-compare_icdfs_mu_sigma(mu,sigma,a,b)
+    # Obtain icdf using TG
+    perc_t = torch.linspace(0, 1, steps=num_points)
+    # We use the same mu,sigma,a,b values for each percentile in perc_tensor
+    mu_t, sigma_t, a_t, b_t = t([mu]*num_points), t([sigma]*num_points), t([a]*num_points), t([b]*num_points)
+    icdfs_tg = TG(mu_t, sigma_t, a_t, b_t).icdf(perc_t).tolist()
 
-#print(stable_icdf(a,b,0.8))
-#compare_probs(a,b)
+    # Obtain icdf using scipy
+    a_, b_ = (a - mu) / sigma, (b - mu) / sigma # Scipy assumes a,b are given in relative units, as N times sigma from mu
+    perc_l = np.linspace(0, 1, num_points)
+    icdfs_scipy = [truncnorm.ppf(q=p, a=a_, b=b_, loc=mu, scale=sigma) for p in perc_l]
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(perc_l, icdfs_tg, linewidth=1, label='My implementation')
+    plt.plot(perc_l, icdfs_scipy, linewidth=1, label='Scipy')
+    plt.xlabel('Percentile')
+    plt.ylabel('Value')
+    plt.title(f"Comparison of TG and scipy's icdf with mu={mu}, sigma={sigma}, a={a} and b={b}")
+    plt.legend()
+    plt.grid(True)
+    plt.show()  
+
+
+if __name__=='__main__':
+    compare_icdfs_mu_sigma_list(mu, sigma, a, b)
+    # compare_icdfs(a,b)
+    #compare_icdfs_mu_sigma(mu,sigma,a,b)
+    #print(stable_icdf(a,b,0.8))
+    #compare_probs(a,b)
+
+
+
+
 
 """
 # print("Scipy log-prob:", truncnorm.logpdf(a, a=a, b=b, loc=0, scale=1))
