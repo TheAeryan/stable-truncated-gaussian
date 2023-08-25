@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="stable-trunc-gaussian"
-version="1.2.0"
+version="1.3.0"
 description="A numerically-stable and differentiable implementation of the Truncated Gaussian distribution in Pytorch."
 readme="README.md"
 authors = [{ name = "Carlos Núñez Molina", email = "ccaarlos@ugr.es" }]

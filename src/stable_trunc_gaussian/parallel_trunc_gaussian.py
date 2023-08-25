@@ -76,6 +76,9 @@ class ParallelTruncatedGaussian(Distribution):
 		# big_phi(alpha), used in the icdf (and rsample) methods
 		self._big_phi_alpha = self._big_phi(self._alpha)
 
+		batch_shape = a.size()
+		super().__init__(batch_shape)
+
 	# I override __repr__ because parameter names that appear in arg_constraints are of the form
 	# 'param' but instance attributes are of the form '_param' 
 	def __repr__(self) -> str:
@@ -388,7 +391,17 @@ class ParallelTruncatedGaussian(Distribution):
 	This sampling process is differentiable.
 	Current rsample implementation extracted from https://github.com/toshas/torch_truncnorm
 
-	Note: right now, the implementation of rsample is numerically unstable!!
+	@sample_shape The shape (e.g., how many samples) to generate for each combinations of parameters
+				  mu,sigma,a,b
+				  Example:
+				  >>> output = TG(t([-20,10]),t([1,10]),t([-20,10]),t([-10,11])).rsample([3])
+				  >>> print(output)
+				  tensor([[-19.3958,  10.9927],
+						  [-19.1791,  10.6582],
+						  [-18.8327,  10.5413]])
+				 
+				  where output[i] contains sample_shape=3 samples, each one corresponding to a different
+				  parameter combination (i.e., output[i][j] is the i-th sample of the j-th parameter combination)
 	"""
 	def rsample(self, sample_shape: torch.Size = torch.Size()):
 		shape = self._extended_shape(sample_shape)
