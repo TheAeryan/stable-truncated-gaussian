@@ -13,6 +13,7 @@ from torch.special import erf, erfc, erfcx, erfinv
 from torch.distributions import Distribution, constraints
 from torch.distributions.kl import register_kl
 from torch import where
+from torch import logical_and as t_and, logical_or as t_or, logical_not as t_not
 import math
 
 # Constants
@@ -311,8 +312,51 @@ class ParallelTruncatedGaussian(Distribution):
 		return result
 
 	# Inverse cumulative distribution function
-	def icdf(self, x):
+	# Old implementation (unstable)
+	def unstable_icdf(self, x):
 		return self._inv_big_phi( self._big_phi_alpha + x*self._Z )*self._sigma + self._mu
+
+	def icdf(self, perc):
+		# This variable is used to decide when to use the "straightforward" formula for the
+		# TN icdf and when to use the exp-based formula (which only works for the tails of the TN)
+		threshold = 5
+
+		if not isinstance(perc, torch.Tensor):
+			raise ValueError("parameter 'perc' must be an instance of torch.Tensor") 
+
+		alpha, beta = self._alpha, self._beta
+		# Prob given by the N(x|mu,sigma,a,b) dist. to x=a and x=b
+		prob_a, prob_b = torch.exp(self.log_prob(self._a)), torch.exp(self.log_prob(self._b))
+
+		# Obtain masks
+		with torch.no_grad():
+			out1_cond = perc==0
+			out2_cond = perc==1
+			# right tail approximation
+			out3_cond = t_and(alpha>=threshold, t_not(t_or(out1_cond, out2_cond)))
+			# left tail approximation
+			out4_cond = t_and(beta<=threshold , t_not(t_or(out1_cond, out2_cond)))
+			# straightforward formula
+			out5_cond = t_not(t_or(t_or(t_or(out1_cond, out2_cond), out3_cond), out4_cond))
+
+			
+
+
+		# Mask input values for each operation
+		# TODO
+
+		# Apply operations
+		out1_m = self._a
+		out2_m = self._b
+
+		# TODO
+		# Right tail approximation
+		# Left tail approximation
+		# Straightforward formula
+		
+
+
+
 
 	"""
 	From https://pytorch.org/docs/stable/distributions.html

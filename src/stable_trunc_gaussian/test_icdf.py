@@ -207,6 +207,9 @@ Another issue is that we sometimes need to clip values for percentiles close to 
 close to 1 (when a,b>0)
 
 - See how to normalize a,b,x when mu!=0 and sigma!=1
+
+- Done
+
 - See how large/small alpha,beta need to be in order to use this approximation instead of the original
   icdf formula
 - Implement using tensors for several values at the same time
