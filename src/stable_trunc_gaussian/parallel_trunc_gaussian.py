@@ -435,7 +435,7 @@ def kl_truncgauss_truncgauss(d1, d2):
 
 	# The interval [a1, b1] must be inside the interval [a2, b2]
 	# Otherwise, the KL divergence is infinite
-	if a1 < a2 or b1 > b2:
+	if torch.any(a1 < a2) or torch.any(b1 > b2):
 		raise Exception(f"Interval [a1={a1}, b1={b1}] must be inside interval [a2={a2}, b2={b2}]. Otherwise, KL Divergence equals +inf.")
 
 	# Calculate KL(d1 || d2)
