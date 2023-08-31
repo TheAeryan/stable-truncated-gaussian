@@ -329,14 +329,21 @@ class ParallelTruncatedGaussian(Distribution):
 
 		# This variable is used to decide when to use the "straightforward" formula for the
 		# TN icdf and when to use the exp-based formula (which only works for the tails of the TN)
-		threshold = 4
+		threshold = 3
 
 		if not isinstance(perc, torch.Tensor):
 			raise ValueError("parameter 'perc' must be an instance of torch.Tensor") 
 
 		alpha, beta, mu, sigma = self._alpha, self._beta, self._mu, self._sigma
 		# Prob given by the N(x|mu,sigma,a,b) dist. to x=a and x=b
-		prob_a, prob_b = torch.exp(self.log_prob(self._a)), torch.exp(self.log_prob(self._b))
+		# NOTE: We need to clip log_probs because, otherwise, prob_a and prob_b may
+		# be 0 (which later results in "inf" values in calculations)
+		# Since a log_prob of -30 means the probability is about 1e-13, in practice, this clipping
+		# does not affect the final result. It only affects values which will nonetheless
+		# be masked to 0, i.e., which do not affect the final result.
+		log_prob_a = torch.clip(self.log_prob(self._a), min=-30, max=30)
+		log_prob_b = torch.clip(self.log_prob(self._b), min=-30, max=30)
+		prob_a, prob_b = torch.exp(log_prob_a), torch.exp(log_prob_b)
 
 		# Obtain masks
 		with torch.no_grad():
@@ -363,13 +370,13 @@ class ParallelTruncatedGaussian(Distribution):
 		out1_m = self._a
 		out2_m = self._b
 		# Right tail approximation
-		out3_m = torch.clip(alpha + (-torch.log(1-perc_3_4) / prob_a), max=beta)*sigma + mu
+		out3_m = (alpha + (-torch.log(1-perc_3_4) / prob_a))*sigma + mu
 		# Left tail approximation
-		out4_m = torch.clip(beta + torch.log(perc_3_4) / prob_b, min=alpha)*sigma + mu
+		out4_m = (beta + torch.log(perc_3_4) / prob_b)*sigma + mu
 		# Straightforward formula
 		# We clip the result because sometimes, inv_big_phi can return a value slightly smaller than alpha
 		# or larger than beta (e.g., 3.9999 when alpha is 4)
-		out5_m = torch.clip(self._inv_big_phi( inv_big_phi_input_m ), min=alpha, max=beta)*sigma + mu
+		out5_m = (self._inv_big_phi( inv_big_phi_input_m ))*sigma + mu
 
 		# Unmask tensors, by setting masked values to 0
 		out1 = where(out1_cond, out1_m, 0)
@@ -381,7 +388,12 @@ class ParallelTruncatedGaussian(Distribution):
 		# Add them up into a single tensor
 		final_out = out1 + out2 + out3 + out4 + out5
 
-		return final_out
+		# "Smart" clipping method that does not result in zero gradients when values outside the interval [a,b]
+		# are clipped to lie inside this interval
+		# We need to clip final_out due to approximation errors when calculating the icdf
+		final_out_clip = final_out + torch.clip(self._a-final_out, min=0) - torch.clip(final_out-self._b, min=0)
+
+		return final_out_clip
 
 
 	"""

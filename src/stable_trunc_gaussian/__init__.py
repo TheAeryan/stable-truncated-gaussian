@@ -1,6 +1,6 @@
 # __init__.py
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 from .parallel_trunc_gaussian import ParallelTruncatedGaussian as TruncatedGaussian
 # SequentialTruncatedGaussian is legacy code at this point, and lacks many methods such as rsample and icdf
