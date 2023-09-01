@@ -27,6 +27,12 @@ SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 LOG_SQRT_2_PI = math.log(SQRT_2_PI)
 LOG_2 = math.log(2)
 
+# Auxiliary function used to check which tensor values are "close" to some float
+# We only use absolute tolerance but not relative one
+# In other words, two values a, b are considered to be close if |a-b|<=atol
+def is_close(tensor, val, atol=1e-4):
+	val_tensor = torch.full_like(tensor, val)
+	return torch.isclose(tensor,val_tensor, atol=atol, rtol=float('inf'))
 
 class ParallelTruncatedGaussian(Distribution):
 
@@ -347,8 +353,8 @@ class ParallelTruncatedGaussian(Distribution):
 
 		# Obtain masks
 		with torch.no_grad():
-			out1_cond = perc==0
-			out2_cond = perc==1
+			out1_cond = is_close(perc, 0) 
+			out2_cond = is_close(perc, 1)
 			# right tail approximation
 			out3_cond = t_and(alpha>=threshold, t_not(t_or(out1_cond, out2_cond)))
 			# left tail approximation
@@ -359,7 +365,7 @@ class ParallelTruncatedGaussian(Distribution):
 		# Mask input values for each operation
 		# For those perc values that are either 0 or 1, why put them to 0.5 to avoid 
 		# log(0) (note that this values are not used for the final result, since they are masked out)
-		perc_3_4 = where(t_or(perc==0,perc==1), 0.5, perc) 
+		perc_3_4 = where(t_or(out1_cond,out2_cond), 0.5, perc) 
 
 		# For the stable formula, the input to _inv_big_phi must be 0.5 for masked values
 		# Otherwise, we could get -inf (for 0) or inf (for 1)
