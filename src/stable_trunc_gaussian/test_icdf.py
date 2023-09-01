@@ -12,7 +12,7 @@ from scipy.stats import truncnorm
 mu = 0
 sigma = 1
 a = 10
-b = 11
+b = 20
 
 # prob(x) given by the original truncated gaussian N(x|mu,sigma,a,b)
 def prob_tn(a,b,x):
@@ -206,7 +206,7 @@ def compare_icdfs_mu_sigma_list(mu, sigma, a, b):
     plt.title(f"Comparison of TG and scipy's icdf with mu={mu}, sigma={sigma}, a={a} and b={b}")
     plt.legend()
     plt.grid(True)
-    plt.show()  
+    plt.show()
 
 
 if __name__=='__main__':
