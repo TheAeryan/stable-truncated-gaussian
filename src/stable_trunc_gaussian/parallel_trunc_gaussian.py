@@ -30,9 +30,9 @@ LOG_2 = math.log(2)
 # Auxiliary function used to check which tensor values are "close" to some float
 # We only use absolute tolerance but not relative one
 # In other words, two values a, b are considered to be close if |a-b|<=atol
-def is_close(tensor, val, atol=1e-4):
-	val_tensor = torch.full_like(tensor, val)
-	return torch.isclose(tensor,val_tensor, atol=atol, rtol=float('inf'))
+def is_close(tensor, val, atol=1e-5):
+	val_tensor = torch.full_like(tensor, val, dtype=float)
+	return torch.abs(tensor-val_tensor) <= atol
 
 class ParallelTruncatedGaussian(Distribution):
 
@@ -365,20 +365,38 @@ class ParallelTruncatedGaussian(Distribution):
 		# Mask input values for each operation
 		# For those perc values that are either 0 or 1, why put them to 0.5 to avoid 
 		# log(0) (note that this values are not used for the final result, since they are masked out)
-		perc_3_4 = where(t_or(out1_cond,out2_cond), 0.5, perc) 
+		perc_3_4 = where(t_or(out1_cond,out2_cond), 0.5, perc)
 
 		# For the stable formula, the input to _inv_big_phi must be 0.5 for masked values
 		# Otherwise, we could get -inf (for 0) or inf (for 1)
 		inv_big_phi_input = self._big_phi_alpha + perc*self._Z
 		inv_big_phi_input_m = where(out5_cond, inv_big_phi_input, 0.5)
 
+		# -- Truncated exponential icdf --
+		# See https://math.stackexchange.com/questions/4746255/numerically-stable-method-for-sampling-from-truncated-normal-distribution/
+		# The icdf of an exponential distribution lambda*e^(-lambda*x) is -ln(1-p)/lambda, where p is the percentile in [0,1]
+		# We now want to obtain the icdf of a *truncated* exponential distribution in the range [0, gamma] (where gamma=beta-alpha)
+		# Therefore, the icdf of this truncated exp dist should output a value between [0, gamma] (instead of in [0, inf) )
+		# We can do this by using the same icdf function but modifying the percentile p
+		# p_gamma=1-e^(-gamma*lambda) is the percentile for which icdf returns gamma. Therefore, the new percentile p' must be a number
+		# between 0 and p_gamma, so that icdf(p') is inside [0, gamma]
+		with torch.no_grad():
+			gamma = beta-alpha
+			p_gamma_a = 1 - torch.exp(-gamma*prob_a) # p_gamma for when lambda=prob_a
+			p_gamma_b = 1 - torch.exp(-gamma*prob_b) # p_gamma for when lambda=prob_a
+
+			# Scale percentiles from range [0,1] to [0,p_gamma]
+			perc_3_scaled = perc_3_4*p_gamma_a
+			perc_4_scaled = (1-perc_3_4)*p_gamma_b # We do 1-perc_3_4 because the percentile for the left tail approximation goes from
+												   # 1 to 0 instead of from 0 to 1 (i.e., it's the opposite of the percentile for the right tail approx.)
+
 		# Apply operations
 		out1_m = self._a
 		out2_m = self._b
 		# Right tail approximation
-		out3_m = (alpha + (-torch.log(1-perc_3_4) / prob_a))*sigma + mu
+		out3_m = (alpha + (-torch.log(1-perc_3_scaled) / prob_a))*sigma + mu
 		# Left tail approximation
-		out4_m = (beta + torch.log(perc_3_4) / prob_b)*sigma + mu
+		out4_m = (beta + torch.log(1-perc_4_scaled) / prob_b)*sigma + mu
 		# Straightforward formula
 		# We clip the result because sometimes, inv_big_phi can return a value slightly smaller than alpha
 		# or larger than beta (e.g., 3.9999 when alpha is 4)
