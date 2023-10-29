@@ -31,8 +31,8 @@ LOG_2 = math.log(2)
 # We only use absolute tolerance but not relative one
 # In other words, two values a, b are considered to be close if |a-b|<=atol
 def is_close(tensor, val, atol):
-	val_tensor = torch.full_like(tensor, val, dtype=float)
-	return torch.abs(tensor-val_tensor) <= atol
+	val_tensor = torch.full_like(tensor, val)
+	return torch.abs(tensor-val_tensor) < atol
 
 class ParallelTruncatedGaussian(Distribution):
 
@@ -332,6 +332,8 @@ class ParallelTruncatedGaussian(Distribution):
 
 	# Inverse cdf function or percentile function (ppf)
 	# @perc Percentile, a real number between 0 and 1 (both included)
+	# NOTE: when perc is very close (according to self.atol) to either 0 or 1, we return a or b, respectively
+	# In the future, we will improve the precision of icdf for values very close to 0 or 1
 	def icdf(self, perc):
 		# Due to numerical unstability, when computing icdf for large (positive or negative) alpha, beta
 		# we don't use the "straightforward" formula but, rather, approximate the tail of the gaussian using
@@ -444,10 +446,14 @@ class ParallelTruncatedGaussian(Distribution):
 				  where output[i] contains sample_shape=3 samples, each one corresponding to a different
 				  parameter combination (i.e., output[i][j] is the i-th sample of the j-th parameter combination)
 	"""
+	# Note: the current implementation of icdf returns a or b for values very close to 0 or 1, respectively
+	# To avoid this, instead of sampling values uniformly from [0,1], we sample them from [2*self.atol, 1-2*self.atol]
 	def rsample(self, sample_shape: torch.Size = torch.Size()):
 		shape = self._extended_shape(sample_shape)
 		
-		p = torch.empty(shape, device=self._mu.device).uniform_(0,1)
+		#p = torch.empty(shape, device=self._mu.device).uniform_(0,1)
+		p = torch.empty(shape, device=self._mu.device).uniform_(2*ParallelTruncatedGaussian.atol,
+														  1-2*ParallelTruncatedGaussian.atol)
 		
 		return self.icdf(p)
 
