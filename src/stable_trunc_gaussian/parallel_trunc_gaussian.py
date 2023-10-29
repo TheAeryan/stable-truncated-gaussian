@@ -30,12 +30,17 @@ LOG_2 = math.log(2)
 # Auxiliary function used to check which tensor values are "close" to some float
 # We only use absolute tolerance but not relative one
 # In other words, two values a, b are considered to be close if |a-b|<=atol
-def is_close(tensor, val, atol=1e-5):
+def is_close(tensor, val, atol):
 	val_tensor = torch.full_like(tensor, val, dtype=float)
 	return torch.abs(tensor-val_tensor) <= atol
 
 class ParallelTruncatedGaussian(Distribution):
 
+	# Absolute tolerance used as "atol" parameter for is_close method
+	# It is used in the icdf method, to check if "perc" is very close to 0 or 1
+	# If it is, we return either a or b, respectively
+	# A lower atol parameter may result in NaN values when calculating the icdf
+	atol = 2e-8
 	has_rsample = True
 
 	arg_constraints = {
@@ -353,8 +358,8 @@ class ParallelTruncatedGaussian(Distribution):
 
 		# Obtain masks
 		with torch.no_grad():
-			out1_cond = is_close(perc, 0) 
-			out2_cond = is_close(perc, 1)
+			out1_cond = is_close(perc, 0, atol=ParallelTruncatedGaussian.atol) 
+			out2_cond = is_close(perc, 1, atol=ParallelTruncatedGaussian.atol)
 			# right tail approximation
 			out3_cond = t_and(alpha>=threshold, t_not(t_or(out1_cond, out2_cond)))
 			# left tail approximation

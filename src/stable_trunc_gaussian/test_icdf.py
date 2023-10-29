@@ -11,8 +11,8 @@ from scipy.stats import truncnorm
 
 mu = 0
 sigma = 1
-a = 10
-b = 20
+a = -2
+b = 2
 
 # prob(x) given by the original truncated gaussian N(x|mu,sigma,a,b)
 def prob_tn(a,b,x):
