@@ -457,17 +457,6 @@ class ParallelTruncatedGaussian(Distribution):
         
         out = self.icdf(p)
 
-        if is_invalid(out):
-            idx = torch.where(torch.isnan(out))[0][0].item()
-            print("> idx:", idx)
-            print("> p[idx]:", p[idx])
-            print("> icdf[idx]:", out[idx])
-            print("> self._mu[idx]:", self._mu[idx])
-            print("> self._sigma[idx]:", self._sigma[idx])
-            print("> self._a[idx]:", self._a[idx])
-            print("> self._b[idx]:", self._b[idx])
-            raise Exception(">>> Invalid value in rsample <<<")
-
         return out
 
 """
