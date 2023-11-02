@@ -488,7 +488,13 @@ def kl_truncgauss_truncgauss(d1, d2):
         raise Exception(f"Interval [a1={a1}, b1={b1}] must be inside interval [a2={a2}, b2={b2}]. Otherwise, KL Divergence equals +inf.")
 
     # Calculate KL(d1 || d2)
+    """
+    # OLD
     kl_divergence = 0.5*mu2*inv_sqr_sigma2 - 0.5*mu1*inv_sqr_sigma1 + torch.log(sigma2/sigma1) + log_Z2 - log_Z1 - \
                     (mu2*inv_sqr_sigma2 - mu1*inv_sqr_sigma1)*mean1 - (0.5*inv_sqr_sigma1 - 0.5*inv_sqr_sigma2)*(var1+mean1**2)
+    """
+
+    kl_divergence = mu2/(2*sigma2**2) - mu1/(2*sigma1**2) + log_Z2 - log_Z1 - (mu2/sigma2**2 - mu1/sigma1**2)*mean1 \
+                    - (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2)
 
     return kl_divergence
