@@ -85,21 +85,15 @@ def compare_kl_and_var(params_list):
     ((0, 1, 10, 20), (0, 1, 10, 100)),
     ((0, 1, 10, 20), (0, 1, -10, 20)),
     ((0, 1, 10, 20), (0, 1, -10, 100)),
+
+    ((8, 1, 10, 20), (8, 1, 10, 20)),
+    ((8, 1, 10, 20), (8, 1, 10, 100)),
+    ((8, 1, 10, 20), (8, 1, -10, 20)),
+    ((8, 1, 10, 20), (8, 1, -10, 100)),
 ]"""
 
 params_list=[
-    ((0, 1, -1, 1), (0, 1, -1, 1)),
-    ((0, 1, -1, 1), (0, 1, -10, 10)),
-    ((0, 1, -1, 1), (0, 1, -1, 10)),
-    ((0, 1, -1, 1), (0, 1, -10, 1)),
-
-    ((0.5,2,-1,1), (0.5,2,-1,1)),
-    ((0.5,2,-1,1), (0.5,2,-5,1)),
-    ((0.5,2,-1,1), (0.5,2,-1,5)),
-
-    ((1,2,-10,10), (0.5,2,-10,10)),
-    ((2,4,-10,10), (0.5,4,-10,10)),
-    ((3,8,-10,10), (0.5,8,-10,10)),
+    ((30.0764, 1.4142, 29.9000, 100000.1016), (31, 1.1000, 29.9000, 100000.1016))
 ]
 
 if __name__ == "__main__":
@@ -112,5 +106,25 @@ if __name__ == "__main__":
 - KL calculations are correct when mu=0, sigma=1
 - Normalizing a,b as in scipy before calculating KL with truncated does not work
 
+---
+- KL calculations are correct when mu=0, sigma=1
+- They are also correct when both distribution d1, d2 have the same mu and sigma (even if mu != 0 and sigma != 1)
 
+
+---- Changes between Entropy paper KL-divergence
+
+- a, b are numbers on the real line (not stds as in scipy)
+- Z_a_b(theta) = bigphi_theta(b) - bigphi_theta(a), where bigphi_theta is the cdf of a normal distribution with parameters theta
+    - bigphi_theta(x) -> CDF of a normal distribution with mu,sigma=theta up to x (x is not normalized, i.e., it is a instead of alpha)
+    - this is equivalent to the CDF of a standard normal distribution (mu=0,sigma=1) up to normalized x (i.e., alpha instead of a)
+
+- Z_a_b(m,s) = sqrt(2*pi)*s(bigphi_m_s(b) - bigphi_m_s(a))
+    - We need to multiply Z by sqrt(2*pi)*s!!
+
+> Formula analysis
+    - parameters m, s -> mu, sigma in my implementation (not normalized)
+    - moments (mean and variance) -> seem to be okay
+    - I think the issue is with log(Z2/Z1)
+        - multiply (bigphi(b) - bigphi(a)) by sqrt(2*pi)*s
+        - when calculating bigphi(x), divide x in erf(x) by sqrt2
 """
