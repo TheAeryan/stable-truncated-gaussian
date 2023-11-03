@@ -123,6 +123,14 @@ class ParallelTruncatedGaussian(Distribution):
     def beta(self):
         return self._beta
     
+    @property
+    def log_Z(self):
+        return self._log_Z
+    
+    @property
+    def Z(self):
+        return self._Z
+    
     # --- Auxiliary methods ---
 
     @staticmethod
@@ -277,44 +285,6 @@ class ParallelTruncatedGaussian(Distribution):
 
         return final_out	
     
-    def _calculate_log_Z_kl(self):
-        # torch.where autograd does not work correctly when there are NaN or inf values
-        # (even if those values are not chosen by the condition in torch.where)
-        # https://discuss.pytorch.org/t/incorrect-gradient-calculation-with-torch-where-and-nans/185367
-        # Therefore, we need to avoid getting NaN or inf for ANY operation
-
-        alpha, beta, mu, sigma, mean_d = self._alpha, self._beta, self._mu, self._sigma, self._mean.detach()
-
-        # Obtain masks
-        with torch.no_grad():
-            out1_cond = torch.logical_and(alpha>=0, beta>=0)
-            out2_cond = torch.logical_and(alpha<=0, beta<=0)
-            out3_cond = torch.logical_and(torch.logical_not(out1_cond), torch.logical_not(out2_cond))
-
-        # Mask input values for each operation
-        alpha1, beta1, mu1 = where(out1_cond, alpha, 0), where(out1_cond, beta, 1), where(out1_cond, mu, mean_d-1)
-        alpha2, beta2, mu2 = where(out2_cond, alpha, 1), where(out2_cond, beta, 0), where(out2_cond, mu, mean_d+1)
-        alpha3, beta3 = where(out3_cond, alpha, 0), where(out3_cond, beta, 1)
-
-        # Apply operations
-        out1_m = -torch.log( (self._mean-mu1) / sigma ) - LOG_SQRT_2_PI - (alpha1**2)/2 + \
-                torch.log(1 - torch.exp( (alpha1+beta1)*(alpha1-beta1) / 2 ))
-        out2_m = -torch.log( (mu2-self._mean) / sigma ) - LOG_SQRT_2_PI - (beta2**2)/2 + \
-                torch.log(1 - torch.exp( (alpha2+beta2)*(beta2-alpha2) / 2))
-        out3_m = -LOG_2 + torch.log(erf(beta3*INV_SQRT_2) - erf(alpha3*INV_SQRT_2))
-
-        # Unmask tensors, by setting masked values to 0
-        out1 = where(out1_cond, out1_m, 0)
-        out2 = where(out2_cond, out2_m, 0)
-        out3 = where(out3_cond, out3_m, 0)
-
-        # Add them up into a single tensor
-        final_out = out1 + out2 + out3
-
-        return final_out	
-
-
-
     @property
     def log_Z(self):
         return self._log_Z
@@ -527,31 +497,15 @@ def kl_truncgauss_truncgauss(d1, d2):
 
     # Calculate KL(d1 || d2)
     """
-    # OLD
+    # Old KL formula
+    # There was a typo, in which the mu2 and mu1 in the first two terms needed to be squared
     kl_divergence = 0.5*mu2*inv_sqr_sigma2 - 0.5*mu1*inv_sqr_sigma1 + torch.log(sigma2/sigma1) + log_Z2 - log_Z1 - \
                     (mu2*inv_sqr_sigma2 - mu1*inv_sqr_sigma1)*mean1 - (0.5*inv_sqr_sigma1 - 0.5*inv_sqr_sigma2)*(var1+mean1**2)
     """
 
-
-    """d1._a, d1._b = (a1 - mu1) / sigma1, (b1 - mu1) / sigma1
-    d2._a, d2._b = (a2 - mu2) / sigma2, (b2 - mu2) / sigma2"""
-
-    """d1._alpha, d1._beta = a1, b1
-    d2._alpha, d2._beta = a2, b2"""
-
-    new_log_Z1 = log_Z1
-    new_log_Z2 = log_Z2
-
-    Z1 = torch.exp(new_log_Z1)*math.sqrt(2*math.pi)*sigma1
-    Z2 = torch.exp(new_log_Z2)*math.sqrt(2*math.pi)*sigma2
-
-    kl_divergence_old = mu2/(2*sigma2**2) - mu1/(2*sigma1**2) + torch.log(Z2 / Z1) - (mu2/sigma2**2 - mu1/sigma1**2)*mean1 \
-                    - (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2)
-
-
-    log_norm_1 = mu1**2/(2*sigma1**2) + torch.log(torch.exp(log_Z1)*math.sqrt(2*math.pi)*sigma1)
-    log_norm_2 = mu2**2/(2*sigma2**2) + torch.log(torch.exp(log_Z2)*math.sqrt(2*math.pi)*sigma2) 
-    grad_log_norm = (mu2/sigma2**2 - mu1/sigma1**2)*mean1 + (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2) # TODO, change - by 0
+    log_norm_1 = 0.5*mu1**2*inv_sqr_sigma1 + log_Z1 + torch.log(sigma1)
+    log_norm_2 = 0.5*mu2**2*inv_sqr_sigma2 + log_Z2 + torch.log(sigma2)
+    grad_log_norm = (mu2*inv_sqr_sigma2 - mu1*inv_sqr_sigma1)*mean1 + 0.5*(inv_sqr_sigma1 - inv_sqr_sigma2)*(var1 + mean1**2)
 
     kl_divergence = log_norm_2 - log_norm_1 - grad_log_norm
 

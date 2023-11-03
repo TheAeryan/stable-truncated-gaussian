@@ -2,7 +2,7 @@ from parallel_trunc_gaussian import ParallelTruncatedGaussian as TG
 import torch
 from torch import tensor as t
 from torch.distributions.kl import kl_divergence
-from scipy.stats import truncnorm, entropy
+from scipy.stats import truncnorm, entropy, norm
 import numpy as np
 
 def compare_var(mu, sigma, a, b):
@@ -12,6 +12,28 @@ def compare_var(mu, sigma, a, b):
     v2 = truncnorm.var(a=a_, b=b_, loc=mu, scale=sigma)
 
     return v2, v1
+
+def compare_mean(mu,sigma,a,b):
+    m1 = TG(t(mu), t(sigma), t(a), t(b)).mean
+
+    a_, b_ = (a - mu) / sigma, (b - mu) / sigma
+    m2 = truncnorm.mean(a=a_, b=b_, loc=mu, scale=sigma)
+
+    return m2, m1
+
+def scipy_log_Z(mu, sigma, a, b):
+    alpha = (a - mu) / sigma
+    beta = (b - mu) / sigma
+
+    Z = norm.cdf(beta) - norm.cdf(alpha)
+
+    return np.log(Z)
+
+def compare_log_Z(mu, sigma, a, b):
+    log_Z1 = TG(t(mu), t(sigma), t(a), t(b)).log_Z
+    log_Z2 = scipy_log_Z(mu, sigma, a, b)
+
+    return log_Z2, log_Z1
 
 def scipy_kl(d1_params, d2_params):
     mu1, sigma1, a1, b1 = d1_params
@@ -24,7 +46,7 @@ def scipy_kl(d1_params, d2_params):
     d1_scipy = truncnorm(a=a1_, b=b1_, loc=mu1, scale=sigma1)
     d2_scipy = truncnorm(a=a2_, b=b2_, loc=mu2, scale=sigma2)
 
-    n_points = int(1e5)
+    n_points = int(1e6)
     x = np.linspace(d2_scipy.ppf(1e-5), d2_scipy.ppf(1-1e-5), n_points)
 
     pdf1 = d1_scipy.pdf(x)
@@ -49,90 +71,29 @@ def compare_kl_and_var(params_list):
         kl_scipy, kl = compare_kl(params[0], params[1])
         v_scipy1, v1 = compare_var(params[0][0], params[0][1], params[0][2], params[0][3])
         v_scipy2, v2 = compare_var(params[1][0], params[1][1], params[1][2], params[1][3])
+        m_scipy1, m1 = compare_mean(params[0][0], params[0][1], params[0][2], params[0][3])
+        m_scipy2, m2 = compare_mean(params[1][0], params[1][1], params[1][2], params[1][3])
+        log_z_scipy1, log_z1 = compare_log_Z(params[0][0], params[0][1], params[0][2], params[0][3])
+        log_z_scipy2, log_z2 = compare_log_Z(params[1][0], params[1][1], params[1][2], params[1][3])
 
         print(f"\n------ Number {i} ------")
         print(f"Params: {params}")
         print(f"KL divergence: {kl_scipy} vs {kl}")
         print(f"Var 1: {v_scipy1} vs {v1}")
         print(f"Var 2: {v_scipy2} vs {v2}")
+        print(f"Mean 1: {m_scipy1} vs {m1}")
+        print(f"Mean 2: {m_scipy2} vs {m2}")
+        print(f"Log(Z) 1: {log_z_scipy1} vs {log_z1}")
+        print(f"Log(Z) 2: {log_z_scipy2} vs {log_z2}")
         print("------------------")
 
 # Example params to test kl and var
 # In order: first distribution, second distribution
 # Each distribution has mu,sigma,a,b
 # Important Note: the [a,b] interval of the first distribution must be a subset of the second distribution (a2 <= a1 <= b1 <= b2)
-
-# Generate params where both distributions always have mu=0 and sigma=1
-"""params_list=[
-    ((30.0764, 1.4142, 29.9000, 100000.1016), (30.0764, 1.4142, 29.9000, 100000.1016)),
-    ((30.0764, 1.4142, 29.9000, 100000.1016), (31, 1.1000, 29.9000, 100000.1016)),
-    ((30.0764, 1.4142, 29.9000, 100000.1016), (30.05, 1.4, 29.9000, 100000.1016)),
-    ((3,1,-5,10000), (4,1.5,-5,10000)),
-    ((4,1.5,-5,10000), (3,1,-5,10000)),
-
-    ((0, 1, -1, 1), (0, 1, -1, 1)),
-    ((0, 1, -1, 1), (0, 1, -10, 10)),
-    ((0, 1, -1, 1), (0, 1, -1, 10)),
-    ((0, 1, -1, 1), (0, 1, -10, 1)),
-    ((0, 1, -10, 1), (0, 1, -10, 10)),
-    ((0, 1, -100, 0), (0, 1, -101, 32.45)),
-
-    ((0, 1, -1, 1), (0, 1, -1, 1e5)),
-    ((0, 1, -1, 1), (0, 1, -1e5, 1)),
-    ((0, 1, -1, 1), (0, 1, -1e6, 1e6)),
-
-    ((0, 1, 10, 20), (0, 1, 10, 20)),
-    ((0, 1, 10, 20), (0, 1, 10, 100)),
-    ((0, 1, 10, 20), (0, 1, -10, 20)),
-    ((0, 1, 10, 20), (0, 1, -10, 100)),
-
-    ((8, 1, 10, 20), (8, 1, 10, 20)),
-    ((8, 1, 10, 20), (8, 1, 10, 100)),
-    ((8, 1, 10, 20), (8, 1, -10, 20)),
-    ((8, 1, 10, 20), (8, 1, -10, 100)),
-]"""
-
 params_list=[
-    ((30, 1, 29, 100000), (31, 1, 29, 100000)),
-    ((30, 1, 29, 100000), (30, 2, 29, 100000)),
-    ((29, 1, 29, 100000), (30, 2, 29, 100000)),
-    ((29, 1, 29, 100000), (30, 2, 20, 100000)),
-    ((30.0764, 1.4142, 29.9000, 100000.1016), (30.0764, 1.4142, 29.9000, 100000.1016)),
-    ((30.0764, 1.4142, 29.9000, 100000.1016), (31, 1.1000, 29.9000, 100000.1016)),
-    ((30.0764, 1.4142, 29.9000, 100000.1016), (30.05, 1.4, 29.9000, 100000.1016)),
-    ((3,1,-5,10000), (4,1.5,-5,10000)),
-    ((4,1.5,-5,10000), (3,1,-5,10000))
+    ((0, 0.1, -1, 1), (0, 5, -1, 1)),
 ]
 
 if __name__ == "__main__":
     compare_kl_and_var(params_list)
-
-
-# TODO
-"""
-- TG and scipy return almost the same variance
-- KL calculations are correct when mu=0, sigma=1
-- Normalizing a,b as in scipy before calculating KL with truncated does not work
-
----
-- KL calculations are correct when mu=0, sigma=1
-- They are also correct when both distribution d1, d2 have the same mu and sigma (even if mu != 0 and sigma != 1)
-
-
----- Changes between Entropy paper KL-divergence
-
-- a, b are numbers on the real line (not stds as in scipy)
-- Z_a_b(theta) = bigphi_theta(b) - bigphi_theta(a), where bigphi_theta is the cdf of a normal distribution with parameters theta
-    - bigphi_theta(x) -> CDF of a normal distribution with mu,sigma=theta up to x (x is not normalized, i.e., it is a instead of alpha)
-    - this is equivalent to the CDF of a standard normal distribution (mu=0,sigma=1) up to normalized x (i.e., alpha instead of a)
-
-- Z_a_b(m,s) = sqrt(2*pi)*s(bigphi_m_s(b) - bigphi_m_s(a))
-    - We need to multiply Z by sqrt(2*pi)*s!!
-
-> Formula analysis
-    - parameters m, s -> mu, sigma in my implementation (not normalized)
-    - moments (mean and variance) -> seem to be okay
-    - I think the issue is with log(Z2/Z1)
-        - multiply (bigphi(b) - bigphi(a)) by sqrt(2*pi)*s
-        - when calculating bigphi(x), divide x in erf(x) by sqrt2
-"""
