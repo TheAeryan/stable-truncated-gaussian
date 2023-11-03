@@ -515,10 +515,8 @@ Don't call this function directly. Instead, do the following:
 """
 @register_kl(ParallelTruncatedGaussian, ParallelTruncatedGaussian)
 def kl_truncgauss_truncgauss(d1, d2):
-    # TODO
-    # Change back to mu and sigma from mean and std
-    mu1, sigma1, a1, b1, log_Z1, mean1, var1 = d1.mean, torch.sqrt(d1.variance), d1.a, d1.b, d1.log_Z, d1.mean, d1.variance
-    mu2, sigma2, a2, b2, log_Z2, mean2, var2 = d2.mean, torch.sqrt(d2.variance), d2.a, d2.b, d2.log_Z, d2.mean, d2.variance
+    mu1, sigma1, a1, b1, log_Z1, mean1, var1 = d1.mu, d1.sigma, d1.a, d1.b, d1.log_Z, d1.mean, d1.variance
+    mu2, sigma2, a2, b2, log_Z2, mean2, var2 = d2.mu, d2.sigma, d2.a, d2.b, d2.log_Z, d2.mean, d2.variance
     inv_sqr_sigma1 = 1/(sigma1**2)
     inv_sqr_sigma2 = 1/(sigma2**2)
 
@@ -541,27 +539,21 @@ def kl_truncgauss_truncgauss(d1, d2):
     """d1._alpha, d1._beta = a1, b1
     d2._alpha, d2._beta = a2, b2"""
 
-    new_log_Z1 = d1._calculate_log_Z_kl()
-    new_log_Z2 = d2._calculate_log_Z_kl()
+    new_log_Z1 = log_Z1
+    new_log_Z2 = log_Z2
 
     Z1 = torch.exp(new_log_Z1)*math.sqrt(2*math.pi)*sigma1
     Z2 = torch.exp(new_log_Z2)*math.sqrt(2*math.pi)*sigma2
 
-
-
-    kl_divergence = mu2/(2*sigma2**2) - mu1/(2*sigma1**2) + torch.log(Z2 / Z1) - (mu2/sigma2**2 - mu1/sigma1**2)*mean1 \
+    kl_divergence_old = mu2/(2*sigma2**2) - mu1/(2*sigma1**2) + torch.log(Z2 / Z1) - (mu2/sigma2**2 - mu1/sigma1**2)*mean1 \
                     - (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2)
 
 
-    # TODO
-    # REMOVE
-    print("----- kl_divergence terms -----")
-    print("> mu2/(2*sigma2**2)", mu2/(2*sigma2**2))
-    print("> mu1/(2*sigma1**2)", mu1/(2*sigma1**2))
-    print("> torch.log(Z2 / Z1)", torch.log(Z2 / Z1))
-    print("> (mu2/sigma2**2 - mu1/sigma1**2)*mean1", (mu2/sigma2**2 - mu1/sigma1**2)*mean1)
-    print("> mean1", mean1)
-    print("> (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2)", (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2))
-    print("> (var1 + mean1**2)", (var1 + mean1**2))
+    log_norm_1 = mu1**2/(2*sigma1**2) + torch.log(torch.exp(log_Z1)*math.sqrt(2*math.pi)*sigma1)
+    log_norm_2 = mu2**2/(2*sigma2**2) + torch.log(torch.exp(log_Z2)*math.sqrt(2*math.pi)*sigma2) 
+    grad_log_norm = (mu2/sigma2**2 - mu1/sigma1**2)*mean1 + (1/(2*sigma1**2) - 1/(2*sigma2**2))*(var1 + mean1**2) # TODO, change - by 0
+
+    kl_divergence = log_norm_2 - log_norm_1 - grad_log_norm
 
     return kl_divergence
+
