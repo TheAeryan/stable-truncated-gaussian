@@ -40,7 +40,7 @@ class ParallelTruncatedGaussian(Distribution):
     # It is used in the icdf method, to check if "perc" is very close to 0 or 1
     # If it is, we return either a or b, respectively
     # A lower atol parameter may result in NaN values when calculating the icdf
-    atol = 5e-5
+    atol = 1e-4
     has_rsample = True
 
     arg_constraints = {
